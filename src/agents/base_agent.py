@@ -26,7 +26,9 @@ from enum import Enum
 from termcolor import cprint
 from dotenv import load_dotenv
 
-from ..models.model_factory import ModelFactory
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from models.model_factory import ModelFactory
 
 # Load environment variables
 load_dotenv()

@@ -31,6 +31,12 @@ class ModelFactory:
         'ollama': 'llama2'
     }
 
+    def __init__(self):
+        """Initialize the model factory with state tracking."""
+        self.active_model = None
+        self.active_model_name = None
+        self.created_models = {}
+
     @staticmethod
     def create_model(provider: str, model_name: Optional[str] = None, **kwargs):
         """
@@ -135,6 +141,33 @@ class ModelFactory:
             adaptive_temperature=adaptive_temperature,
             rate_limit_delay=0.5 if flux_level > 0.5 else 1.0  # Faster in high flux
         )
+
+    def get_model(self, provider: str = 'claude', model_name: Optional[str] = None):
+        """
+        Get a neuro-flux enhanced model instance, maintaining state.
+
+        Args:
+            provider (str): Provider name (defaults to 'claude')
+            model_name (str, optional): Specific model name
+
+        Returns:
+            BaseModel: Neuro-flux enhanced model instance
+        """
+        model = self.create_model(provider, model_name)
+        self.active_model = model
+        self.active_model_name = getattr(model, 'model_name', f"{provider}:{model_name or self.DEFAULT_MODELS.get(provider, 'unknown')}")
+        return model
+
+    def get_active_model_name(self) -> str:
+        """
+        Get the name of the currently active model.
+
+        Returns:
+            str: Active model name
+        """
+        if self.active_model_name:
+            return self.active_model_name
+        return "claude:claude-3-haiku-20240307"  # Default fallback
 
 # Initialize model factory
 if __name__ == "__main__":
