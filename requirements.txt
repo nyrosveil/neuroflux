@@ -4,7 +4,7 @@ pandas==2.1.4
 numpy==1.26.2
 termcolor==2.4.0
 backtesting==0.6.5
-pandas-ta==0.3.14b
+pandas-ta==0.3.14
 ccxt==4.1.63
 solana==0.32.0
 solders==0.20.0
