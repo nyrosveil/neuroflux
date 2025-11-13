@@ -29,6 +29,30 @@ NeuroFlux is an advanced AI trading system that combines neuro-inspired algorith
 - Python 3.10.9
 - Conda (recommended) or venv
 
+### Dependencies
+
+**Required Dependencies:**
+- `python-dotenv` - Environment variable management
+- `requests` - HTTP requests
+- `pandas` - Data manipulation
+- `numpy` - Numerical computing
+- `termcolor` - Terminal colors
+- `backtesting` - Backtesting framework
+- `ccxt` - Cryptocurrency exchange library
+- `solana` - Solana blockchain integration
+- `solders` - Solana transaction signing
+- `web3` - Ethereum/Web3 integration
+- `anthropic` / `openai` / `groq` / etc. - At least one AI provider
+- `scipy` - Scientific computing
+
+**Optional Dependencies (with graceful fallbacks):**
+- `scikit-learn` - Machine learning algorithms (fallback: rule-based AI)
+- `tensorflow` - Neural networks (fallback: simplified models)
+- `torch` - PyTorch deep learning (fallback: CPU-only operations)
+- `transformers` - NLP models (fallback: basic text processing)
+
+**Note:** NeuroFlux is designed with **graceful degradation**. The system will start and function with core features even if optional ML/AI libraries are not installed. AI features become optional enhancements rather than requirements.
+
 ### Installation
 
 1. **Clone and Setup Environment**
@@ -47,7 +71,19 @@ source neuroflux_env/bin/activate  # On Windows: neuroflux_env\Scripts\activate
 
 2. **Install Dependencies**
 ```bash
+# Install all dependencies (recommended for full functionality)
 pip install -r requirements.txt
+
+# Or install only required dependencies for minimal setup
+pip install python-dotenv requests pandas numpy termcolor backtesting ccxt solana solders web3 anthropic scipy
+```
+
+3. **Test Installation**
+```bash
+# Test that core system works
+python src/main.py --status
+
+# Should show all agents initialized successfully
 ```
 
 3. **Configure Environment**
@@ -138,11 +174,13 @@ Provide YouTube URLs, PDFs, or text descriptions of trading strategies. The agen
 
 ## 🛡️ Risk Management
 
-NeuroFlux implements a risk-first approach:
+NeuroFlux implements a risk-first approach with **graceful degradation**:
 - **Circuit Breakers**: Automatic position closure on loss/gain limits
 - **Flux-Aware Risk**: Adaptive risk based on market volatility
-- **AI Confirmation**: Optional AI review before emergency closures
+- **AI Confirmation**: Optional AI review before emergency closures (falls back to rule-based when ML libraries unavailable)
 - **Position Limits**: Maximum allocation per position and total exposure
+- **Import Protection**: System starts and functions even without TensorFlow/scikit-learn
+- **Fallback Mechanisms**: Rule-based risk assessment when AI models aren't available
 
 ## 📊 Data Flow
 

@@ -27,20 +27,50 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 from scipy.optimize import minimize
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, accuracy_score
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
 import warnings
 warnings.filterwarnings('ignore')
 
-from ..base_agent import BaseAgent
-from ..orchestration.communication_bus import CommunicationBus, Message, MessageType, MessagePriority
-from ..orchestration.agent_registry import AgentCapability
-from .trading.types import Position, RiskLimits
+# Optional ML imports with fallbacks
+try:
+    from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.model_selection import train_test_split
+    from sklearn.metrics import mean_squared_error, accuracy_score
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+    RandomForestRegressor = None
+    RandomForestClassifier = None
+    StandardScaler = None
+    train_test_split = None
+    mean_squared_error = None
+    accuracy_score = None
+
+try:
+    import tensorflow as tf
+    from tensorflow import keras
+    from tensorflow.keras import layers
+    TENSORFLOW_AVAILABLE = True
+except ImportError:
+    TENSORFLOW_AVAILABLE = False
+    tf = None
+    keras = None
+    layers = None
+
+try:
+    import joblib
+    JOBLIB_AVAILABLE = True
+except ImportError:
+    JOBLIB_AVAILABLE = False
+    joblib = None
+
+# Import NeuroFlux components
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from agents.base_agent import BaseAgent
+from orchestration.communication_bus import CommunicationBus, Message, MessageType, MessagePriority
+from orchestration.agent_registry import AgentCapability
+from agents.trading.types import Position, RiskLimits
 
 # Load environment variables
 load_dotenv()
@@ -145,6 +175,13 @@ class AIRiskAdvisor:
 
     def _initialize_models(self):
         """Initialize or load AI models."""
+        if not SKLEARN_AVAILABLE:
+            cprint("⚠️ Scikit-learn not available - AI features disabled", "yellow")
+            self.risk_predictor = None
+            self.volatility_forecaster = None
+            self.emergency_classifier = None
+            return
+
         try:
             # Risk prediction model (Random Forest for interpretability)
             self.risk_predictor = RandomForestRegressor(
@@ -155,7 +192,11 @@ class AIRiskAdvisor:
             )
 
             # Volatility forecasting model (LSTM neural network)
-            self.volatility_forecaster = self._build_lstm_model()
+            if TENSORFLOW_AVAILABLE:
+                self.volatility_forecaster = self._build_lstm_model()
+            else:
+                self.volatility_forecaster = None
+                cprint("⚠️ TensorFlow not available - LSTM forecasting disabled", "yellow")
 
             # Emergency classification model
             self.emergency_classifier = RandomForestClassifier(
@@ -174,24 +215,31 @@ class AIRiskAdvisor:
             self.volatility_forecaster = None
             self.emergency_classifier = None
 
-    def _build_lstm_model(self) -> keras.Model:
+    def _build_lstm_model(self):
         """Build LSTM model for volatility forecasting."""
-        model = keras.Sequential([
-            layers.LSTM(64, input_shape=(None, len(self.feature_columns)), return_sequences=True),
-            layers.Dropout(0.2),
-            layers.LSTM(32),
-            layers.Dropout(0.2),
-            layers.Dense(16, activation='relu'),
-            layers.Dense(1, activation='linear')  # Predict volatility
-        ])
+        if not TENSORFLOW_AVAILABLE or not keras or not layers:
+            return None
 
-        model.compile(
-            optimizer='adam',
-            loss='mse',
-            metrics=['mae']
-        )
+        try:
+            model = keras.Sequential([
+                layers.LSTM(64, input_shape=(None, len(self.feature_columns)), return_sequences=True),
+                layers.Dropout(0.2),
+                layers.LSTM(32),
+                layers.Dropout(0.2),
+                layers.Dense(16, activation='relu'),
+                layers.Dense(1, activation='linear')  # Predict volatility
+            ])
 
-        return model
+            model.compile(
+                optimizer='adam',
+                loss='mse',
+                metrics=['mae']
+            )
+
+            return model
+        except Exception as e:
+            cprint(f"⚠️ Failed to build LSTM model: {str(e)}", "yellow")
+            return None
 
     def predict_risk_level(self, risk_assessment: RiskAssessment,
                           historical_data: Optional[List[RiskAssessment]] = None,
@@ -534,6 +582,10 @@ class AIRiskAdvisor:
         """
         Train AI models using historical risk assessment data.
         """
+        if not SKLEARN_AVAILABLE:
+            cprint("⚠️ Scikit-learn not available - cannot train AI models", "yellow")
+            return False
+
         if len(historical_assessments) < 20:
             cprint("⚠️ Insufficient data for AI training (need at least 20 assessments)", "yellow")
             return False
@@ -607,9 +659,11 @@ class AIRiskAdvisor:
 
     def _save_models(self):
         """Save trained models to disk."""
-        try:
-            import joblib
+        if not JOBLIB_AVAILABLE:
+            cprint("⚠️ Joblib not available - cannot save models", "yellow")
+            return
 
+        try:
             # Save scikit-learn models
             joblib.dump(self.risk_predictor, os.path.join(self.model_dir, 'risk_predictor.pkl'))
             joblib.dump(self.emergency_classifier, os.path.join(self.model_dir, 'emergency_classifier.pkl'))
@@ -632,9 +686,11 @@ class AIRiskAdvisor:
 
     def load_models(self) -> bool:
         """Load trained models from disk."""
-        try:
-            import joblib
+        if not JOBLIB_AVAILABLE:
+            cprint("⚠️ Joblib not available - cannot load models", "yellow")
+            return False
 
+        try:
             model_path = os.path.join(self.model_dir, 'risk_predictor.pkl')
             if os.path.exists(model_path):
                 self.risk_predictor = joblib.load(model_path)

@@ -25,8 +25,15 @@ load_dotenv()
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 
-# Import enhanced backtesting framework
-from backtesting.neuro_backtest import run_neuro_backtest, load_rbi_strategy
+# Import enhanced backtesting framework with fallback
+try:
+    from backtesting.neuro_backtest import run_neuro_backtest, load_rbi_strategy, NeuroFluxStrategy
+    BACKTESTING_AVAILABLE = True
+except ImportError:
+    BACKTESTING_AVAILABLE = False
+    run_neuro_backtest = None
+    load_rbi_strategy = None
+    NeuroFluxStrategy = None
 
 # Output directory for backtest results
 OUTPUT_DIR = "src/data/backtest_runner/"
