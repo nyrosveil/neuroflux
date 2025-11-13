@@ -1,0 +1,16 @@
+{
+  "name": "Extracted Strategy",
+  "description": "https://www.youtube.com/watch?v=e-QmGJU1XYc",
+  "indicators": [
+    "RSI",
+    "MACD"
+  ],
+  "entry_conditions": [
+    "RSI < 30"
+  ],
+  "exit_conditions": [
+    "RSI > 70"
+  ],
+  "timeframe": "1H",
+  "confidence": 0.8
+}

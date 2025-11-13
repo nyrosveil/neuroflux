@@ -283,7 +283,7 @@ def display_sentiment(results):
     Args:
         results (dict): Sentiment analysis results
     """
-    cprint(f"\\n📊 Sentiment Analysis for {results['token']}", "cyan", attrs=['bold'])
+    cprint(f"\n📊 Sentiment Analysis for {results['token']}", "cyan", attrs=['bold'])
     cprint(f"Overall Score: {results['overall_score']:.3f}", "white")
     cprint(f"Category: {results['category']}", "white")
     cprint(f"Confidence: {results['confidence']:.3f}", "white")
@@ -298,7 +298,7 @@ def display_sentiment(results):
         cprint(f"🟡 {results['recommendation']}", "yellow")
 
     # Show source breakdown
-    cprint("\\n📈 Source Breakdown:", "blue")
+    cprint("\n📈 Source Breakdown:", "blue")
     for source, data in results['sources'].items():
         score = data['overall_score']
         color = 'green' if score > 0 else 'red' if score < 0 else 'white'

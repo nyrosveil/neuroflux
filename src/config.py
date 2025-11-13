@@ -114,3 +114,59 @@ FLUX_SENSITIVITY = 0.8  # Sensitivity for flux detection (0-1)
 ADAPTIVE_LEARNING_RATE = 0.1  # Learning rate for neuro-adaptation
 NEURAL_NETWORK_LAYERS = [64, 32, 16]  # Neural network architecture for predictions
 SWARM_SIZE = 6  # Number of agents in swarm consensus
+
+# ============================================================================
+# ACTIVE AGENTS CONFIGURATION
+# ============================================================================
+
+# Master switch for all agents
+AGENTS_ENABLED = True
+
+# Individual agent enable/disable switches
+ACTIVE_AGENTS = {
+    # Core Trading Agents
+    'trading_agent': True,        # Main trading execution
+    'risk_agent': True,          # Risk management and position monitoring
+    'strategy_agent': True,      # Strategy-based trading signals
+
+    # Market Analysis Agents
+    'sentiment_agent': True,     # Market sentiment analysis
+    'research_agent': True,      # Fundamental research and news
+    'chartanalysis_agent': True, # Technical analysis
+    'coingecko_agent': True,     # CoinGecko data and metrics
+
+    # Specialized Agents
+    'funding_agent': True,       # Funding rate analysis
+    'liquidation_agent': True,   # Liquidation monitoring
+    'whale_agent': True,         # Large wallet tracking
+    'websearch_agent': True,     # Web search and data gathering
+
+    # Advanced Agents
+    'copybot_agent': False,      # Copy trading (disabled by default)
+    'sniper_agent': True,        # New launch sniping
+    'swarm_agent': True,         # Swarm intelligence consensus
+    'rbi_agent': True,           # Research-Backed Intelligence
+
+    # Backtesting
+    'backtest_runner': False,    # Automated backtesting (run manually)
+}
+
+# Agent execution priorities (higher = runs first)
+AGENT_PRIORITIES = {
+    'risk_agent': 10,           # Always run risk checks first
+    'sentiment_agent': 8,       # Market sentiment affects all decisions
+    'research_agent': 7,        # Fundamental analysis
+    'chartanalysis_agent': 6,   # Technical analysis
+    'coingecko_agent': 5,       # Market data
+    'funding_agent': 4,         # Funding rates
+    'liquidation_agent': 3,     # Liquidation risks
+    'whale_agent': 2,           # Whale movements
+    'strategy_agent': 1,        # Trading strategies
+    'swarm_agent': 1,           # Swarm consensus
+    'rbi_agent': 1,             # RBI analysis
+    'sniper_agent': 0,          # New launches (lower priority)
+    'websearch_agent': 0,       # Background research
+    'copybot_agent': 0,         # Copy trading
+    'trading_agent': -1,        # Execute trades last
+    'backtest_runner': -10,     # Manual only
+}

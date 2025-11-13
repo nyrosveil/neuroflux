@@ -280,14 +280,14 @@ def display_swarm_results(consensus, agent_responses):
         consensus (dict): Consensus decision
         agent_responses (dict): Individual agent responses
     """
-    cprint("\\n🐝 SWARM CONSENSUS RESULTS", "cyan", attrs=['bold'])
+    cprint("\n🐝 SWARM CONSENSUS RESULTS", "cyan", attrs=['bold'])
     cprint(f"Signal: {consensus['consensus_signal']}", "white")
     cprint(f"Confidence: {consensus['confidence']:.3f}", "white")
     cprint(f"Agreement: {consensus['agreement_level']:.3f}", "white")
     cprint(f"Flux Level: {consensus['flux_level']:.3f}", "white")
     cprint(f"Agents: {consensus['agent_count']}", "white")
 
-    cprint("\\n🤖 Individual Agent Responses:", "blue")
+    cprint("\n🤖 Individual Agent Responses:", "blue")
     for agent, response in agent_responses.items():
         if 'signal' in response:
             color = 'green' if response['signal'] == 'BUY' else 'red' if response['signal'] == 'SELL' else 'white'
@@ -344,7 +344,7 @@ def main():
             time.sleep(SLEEP_BETWEEN_RUNS_MINUTES * 60)
 
         except KeyboardInterrupt:
-            cprint("\\n👋 Swarm Agent stopped by user", "yellow")
+            cprint("\n👋 Swarm Agent stopped by user", "yellow")
             break
         except Exception as e:
             cprint(f"❌ Swarm Agent error: {str(e)}", "red")

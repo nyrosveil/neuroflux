@@ -296,7 +296,7 @@ def main():
     while True:
         try:
             # Get user input
-            user_input = input("\\n📝 Strategy Input (or 'quit' to exit): ").strip()
+            user_input = input("\n📝 Strategy Input (or 'quit' to exit): ").strip()
 
             if user_input.lower() in ['quit', 'exit', 'q']:
                 cprint("👋 RBI Agent stopped", "yellow")
@@ -325,7 +325,7 @@ def main():
             results = run_backtest(code, "sample_data_path")
 
             # Display results
-            cprint("\\n📈 BACKTEST RESULTS:", "green", attrs=['bold'])
+            cprint("\n📈 BACKTEST RESULTS:", "green", attrs=['bold'])
             cprint(f"Return: {results['return_pct']:.1f}%", "white")
             cprint(f"Buy & Hold: {results['buy_and_hold_pct']:.1f}%", "white")
             cprint(f"Max Drawdown: {results['max_drawdown']:.1f}%", "white")
@@ -343,7 +343,7 @@ def main():
             cprint("✅ Strategy processed successfully!", "green")
 
         except KeyboardInterrupt:
-            cprint("\\n👋 RBI Agent stopped by user", "yellow")
+            cprint("\n👋 RBI Agent stopped by user", "yellow")
             break
         except Exception as e:
             cprint(f"❌ RBI Agent error: {str(e)}", "red")

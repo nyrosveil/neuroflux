@@ -1,0 +1,1 @@
+{"timestamp": "2025-11-13T16:09:33.713876", "funding_rates": {}, "analysis": {"average_funding": 0.0, "positive_count": 0, "negative_count": 0, "flux_level": 0.3, "funding_signal": "NEUTRAL", "confidence": 0.5, "reasoning": "No funding rate data available", "predicted_direction": "SIDEWAYS"}}

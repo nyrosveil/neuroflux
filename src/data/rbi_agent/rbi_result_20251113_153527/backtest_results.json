@@ -1,0 +1,11 @@
+{
+  "return_pct": 25.4,
+  "buy_and_hold_pct": 15.2,
+  "max_drawdown": 18.5,
+  "sharpe_ratio": 1.2,
+  "sortino_ratio": 0.9,
+  "total_trades": 45,
+  "win_rate": 0.62,
+  "profit_factor": 1.8,
+  "executed": true
+}

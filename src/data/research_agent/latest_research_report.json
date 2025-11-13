@@ -1,0 +1,68 @@
+{
+  "timestamp": "2025-11-13T16:09:02.120779",
+  "market_data": {
+    "timestamp": "2025-11-13T16:09:02.120630",
+    "indices": {
+      "sp500": {
+        "price": 4500,
+        "change": 1.2
+      },
+      "nasdaq": {
+        "price": 14200,
+        "change": 0.8
+      },
+      "dow": {
+        "price": 35000,
+        "change": 1.5
+      }
+    },
+    "commodities": {
+      "gold": {
+        "price": 1950,
+        "change": -0.5
+      },
+      "oil": {
+        "price": 78,
+        "change": 2.1
+      },
+      "bitcoin": {
+        "price": 43000,
+        "change": 3.2
+      }
+    },
+    "currencies": {
+      "usd_eur": 0.85,
+      "usd_jpy": 150,
+      "usd_cny": 7.2
+    },
+    "crypto_overview": {},
+    "economic_indicators": {
+      "fed_funds_rate": 5.25,
+      "inflation_rate": 3.1,
+      "unemployment_rate": 4.2
+    }
+  },
+  "analysis": {
+    "market_sentiment": "NEUTRAL",
+    "key_drivers": [
+      "Economic data mixed",
+      "Geopolitical tensions"
+    ],
+    "risk_assessment": "Moderate volatility expected",
+    "sector_outlook": {
+      "Technology": "Positive",
+      "Energy": "Bullish",
+      "Finance": "Neutral"
+    },
+    "crypto_implications": "Bitcoin showing strength as digital gold",
+    "policy_impact": "Fed policy remains data-dependent",
+    "short_term_trading": "Monitor key support/resistance levels",
+    "long_term_outlook": "Cautiously optimistic with inflation concerns"
+  },
+  "recommendations": [
+    "Maintain balanced portfolio",
+    "Wait for clearer signals",
+    "Consider cryptocurrency exposure"
+  ],
+  "confidence_level": "MEDIUM"
+}

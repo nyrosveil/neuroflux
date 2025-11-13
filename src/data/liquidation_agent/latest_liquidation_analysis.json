@@ -1,0 +1,18 @@
+{
+  "timestamp": "2025-11-13T16:09:44.743402",
+  "liquidations": [],
+  "analysis": {
+    "total_liquidations": 0,
+    "total_volume": 0,
+    "long_liquidations": 0,
+    "short_liquidations": 0,
+    "long_volume": 0,
+    "short_volume": 0,
+    "flux_level": 0.3,
+    "liquidation_signal": "NEUTRAL",
+    "confidence": 0.5,
+    "reasoning": "No liquidation data available",
+    "market_impact": "LOW",
+    "cascade_risk": "LOW"
+  }
+}
