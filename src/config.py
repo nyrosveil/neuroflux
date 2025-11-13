@@ -1,6 +1,6 @@
 """
 🌙 NeuroFlux Configuration File
-Built with love by NeuroFlux 🚀
+Built with love by Nyros Veil 🚀
 """
 
 # 🔄 Exchange Selection

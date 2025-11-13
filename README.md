@@ -201,6 +201,6 @@ This project is open source and available under the MIT License.
 
 ---
 
-**Built with 🧠 by NeuroFlux**
+**Built with 🧠 by Nyros Veil**
 
 *Advancing AI trading through neuro-inspired intelligence and adaptive flux.*

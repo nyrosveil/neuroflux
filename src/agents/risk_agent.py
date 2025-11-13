@@ -2,6 +2,8 @@
 🧠 NeuroFlux's Risk Agent
 Circuit breaker with neuro-flux awareness - runs FIRST before any trading decisions.
 
+Built with love by Nyros Veil 🚀
+
 Monitors portfolio risk, P&L, and exposure with adaptive flux sensitivity.
 Enforces position limits, loss/gain thresholds, and emergency closures.
 Includes AI confirmation for critical decisions.

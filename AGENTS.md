@@ -497,6 +497,6 @@ if __name__ == "__main__":
 
 ---
 
-**Built with 🧠 by NeuroFlux**
+**Built with 🧠 by Nyros Veil**
 
 *"Neuro-inspired intelligence for adaptive trading in dynamic markets."*
