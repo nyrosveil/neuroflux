@@ -89,6 +89,13 @@ class RiskAssessment:
     ai_insights: Optional[Dict[str, Any]] = None
     ai_predictions: Dict[str, Any] = field(default_factory=dict)  # AI risk predictions
     ai_confidence: float = 0.0  # AI prediction confidence score
+    # Multi-exchange coordination
+    cross_exchange_positions: Dict[str, Position] = field(default_factory=dict)
+    exchange_correlations: Dict[str, float] = field(default_factory=dict)
+    exchange_risks: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    arbitrage_analysis: Dict[str, Any] = field(default_factory=dict)
+    portfolio_reconciliation: Dict[str, Any] = field(default_factory=dict)
+    connectivity_status: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -678,6 +685,15 @@ class RiskAgent(BaseAgent):
         self.positions: Dict[str, Position] = {}
         self.cross_exchange_positions: Dict[str, Position] = {}
 
+        # Multi-exchange coordination
+        self.exchange_positions: Dict[str, Dict[str, Position]] = {}  # exchange -> {symbol -> position}
+        self.exchange_balances: Dict[str, Dict[str, float]] = {}  # exchange -> balance data
+        self.exchange_connectivity: Dict[str, Dict[str, Any]] = {}  # exchange -> connectivity status
+        self.exchange_risk_limits: Dict[str, RiskLimits] = {}  # exchange-specific limits
+
+        # Exchange risk profiles
+        self._initialize_exchange_risk_profiles()
+
         # Risk limits (flux-adjusted)
         self.base_risk_limits = RiskLimits(
             max_position_size=MAX_POSITION_PERCENTAGE / 100 * 1000,  # Assume $1000 base
@@ -911,6 +927,14 @@ class RiskAgent(BaseAgent):
         max_drawdown_pct = self._calculate_max_drawdown()
         position_correlation_risk = await self._assess_position_correlation()
 
+        # Multi-exchange coordination
+        cross_exchange_positions = self._aggregate_cross_exchange_positions()
+        exchange_correlations = self._calculate_exchange_correlations()
+        exchange_risks = self._assess_exchange_risks()
+        arbitrage_analysis = self._monitor_arbitrage_risks()
+        portfolio_reconciliation = self._perform_portfolio_reconciliation()
+        connectivity_status = self._monitor_exchange_connectivity()
+
         # Advanced risk calculations
         var_95 = self._calculate_var(confidence_level=0.95)
         expected_shortfall_95 = self._calculate_expected_shortfall(confidence_level=0.95)
@@ -922,6 +946,10 @@ class RiskAgent(BaseAgent):
 
         # Perform risk checks
         violations, warnings, recommendations = self._check_risk_limits()
+
+        # Add exchange-specific violations
+        exchange_violations = self._check_exchange_isolation_violations()
+        violations.extend(exchange_violations)
 
         # AI-powered risk assessment
         ai_predictions = {}
@@ -1022,32 +1050,666 @@ class RiskAgent(BaseAgent):
             recommendations=recommendations,
             ai_insights=ai_insights,
             ai_predictions=ai_predictions,
-            ai_confidence=ai_confidence
+            ai_confidence=ai_confidence,
+            cross_exchange_positions=cross_exchange_positions,
+            exchange_correlations=exchange_correlations,
+            exchange_risks=exchange_risks,
+            arbitrage_analysis=arbitrage_analysis,
+            portfolio_reconciliation=portfolio_reconciliation,
+            connectivity_status=connectivity_status
         )
 
         return assessment
 
     async def _update_portfolio_data(self):
-        """Update current portfolio data from trading agents."""
+        """Update current portfolio data from trading agents across all exchanges."""
         try:
             # Request portfolio data from trading agents
             if self.communication_bus:
-                # Send request for portfolio data
+                # Send request for multi-exchange portfolio data
                 request = Message(
                     message_id=f"risk_portfolio_request_{int(time.time())}",
                     sender_id=self.agent_id,
                     message_type=MessageType.REQUEST,
-                    topic="portfolio_data_request",
-                    payload={"request_type": "current_portfolio"},
+                    topic="multi_exchange_portfolio_request",
+                    payload={"request_type": "current_portfolio", "include_exchanges": True},
                     priority=MessagePriority.HIGH
                 )
 
-                # For now, use placeholder data
-                # In full implementation, this would wait for responses from trading agents
-                pass
+                # For now, use placeholder data with simulated multi-exchange setup
+                # In full implementation, this would aggregate responses from all exchange adapters
+                self._simulate_multi_exchange_data()
 
         except Exception as e:
             cprint(f"⚠️ Could not update portfolio data: {str(e)}", "yellow")
+
+    def _simulate_multi_exchange_data(self):
+        """Simulate multi-exchange portfolio data for development."""
+        # Simulate data from multiple exchanges
+        exchanges = ["binance", "hyperliquid", "coinbase", "kraken"]
+
+        for exchange in exchanges:
+            # Simulate exchange-specific positions
+            exchange_positions = {}
+            exchange_balance = {
+                "equity": 1000.0 * (0.8 + np.random.random() * 0.4),  # 800-1200
+                "available": 800.0 * (0.8 + np.random.random() * 0.4),
+                "positions_value": 200.0 * (0.5 + np.random.random() * 1.0)
+            }
+
+            # Simulate some positions (not all exchanges have all symbols)
+            symbols = ["BTC-USD", "ETH-USD", "SOL-USD", "ADA-USD"]
+            for symbol in symbols:
+                if np.random.random() > 0.6:  # 40% chance of having position
+                    position = Position(
+                        symbol=symbol,
+                        quantity=np.random.uniform(-10, 10),  # Can be long or short
+                        market_value=np.random.uniform(100, 1000),
+                        unrealized_pnl=np.random.uniform(-200, 200),
+                        exchange=exchange
+                    )
+                    exchange_positions[symbol] = position
+
+            self.exchange_positions[exchange] = exchange_positions
+            self.exchange_balances[exchange] = exchange_balance
+
+            # Update connectivity status
+            self.exchange_connectivity[exchange] = {
+                "connected": np.random.random() > 0.1,  # 90% uptime
+                "latency_ms": np.random.uniform(50, 500),
+                "last_update": time.time(),
+                "api_status": "active" if np.random.random() > 0.05 else "degraded"
+            }
+
+    def _aggregate_cross_exchange_positions(self) -> Dict[str, Position]:
+        """Aggregate positions across all exchanges with netting."""
+        aggregated_positions = {}
+
+        for exchange, positions in self.exchange_positions.items():
+            for symbol, position in positions.items():
+                if symbol not in aggregated_positions:
+                    # Create new aggregated position
+                    aggregated_positions[symbol] = Position(
+                        symbol=symbol,
+                        quantity=position.quantity,
+                        market_value=position.market_value,
+                        unrealized_pnl=position.unrealized_pnl,
+                        exchange="aggregated"
+                    )
+                else:
+                    # Net existing position with new one
+                    existing = aggregated_positions[symbol]
+                    existing.quantity += position.quantity
+                    existing.market_value += position.market_value
+                    existing.unrealized_pnl += position.unrealized_pnl
+
+        # Remove positions that net to zero (or very close to zero)
+        netted_positions = {}
+        for symbol, position in aggregated_positions.items():
+            if abs(position.quantity) > 0.001:  # Minimum position threshold
+                netted_positions[symbol] = position
+
+        return netted_positions
+
+    def _calculate_exchange_correlations(self) -> Dict[str, float]:
+        """Calculate correlation between different exchanges."""
+        correlations = {}
+
+        if len(self.exchange_positions) < 2:
+            return correlations
+
+        # Extract position data for correlation analysis
+        exchange_returns = {}
+
+        for exchange, positions in self.exchange_positions.items():
+            returns = []
+            for symbol, position in positions.items():
+                # Simplified: use P&L as proxy for returns
+                if position.market_value > 0:
+                    ret = position.unrealized_pnl / position.market_value
+                    returns.append(ret)
+
+            if returns:
+                exchange_returns[exchange] = np.mean(returns)
+            else:
+                exchange_returns[exchange] = 0.0
+
+        # Calculate pairwise correlations (simplified)
+        exchanges = list(exchange_returns.keys())
+        for i, exch1 in enumerate(exchanges):
+            for exch2 in exchanges[i+1:]:
+                # Simplified correlation calculation
+                corr_key = f"{exch1}_{exch2}"
+                # In practice, this would use time series correlation
+                correlations[corr_key] = np.random.uniform(-0.5, 0.8)  # Simulated correlation
+
+        return correlations
+
+    def _assess_exchange_risks(self) -> Dict[str, Dict[str, Any]]:
+        """Assess risk metrics for each exchange."""
+        exchange_risks = {}
+
+        for exchange in self.exchange_positions.keys():
+            positions = self.exchange_positions[exchange]
+            balance = self.exchange_balances.get(exchange, {})
+            connectivity = self.exchange_connectivity.get(exchange, {})
+
+            # Calculate exchange-specific risk metrics
+            total_exposure = sum(abs(p.market_value) for p in positions.values())
+            equity = balance.get('equity', 0.0)
+
+            exchange_risk = {
+                'total_exposure': total_exposure,
+                'exposure_ratio': total_exposure / equity if equity > 0 else 0.0,
+                'position_count': len(positions),
+                'connectivity_status': connectivity.get('connected', False),
+                'latency_ms': connectivity.get('latency_ms', 0),
+                'api_status': connectivity.get('api_status', 'unknown'),
+                'risk_score': self._calculate_exchange_risk_score(exchange, positions, balance)
+            }
+
+            exchange_risks[exchange] = exchange_risk
+
+        return exchange_risks
+
+    def _calculate_exchange_risk_score(self, exchange: str, positions: Dict[str, Position],
+                                     balance: Dict[str, float]) -> float:
+        """Calculate risk score for a specific exchange."""
+        score = 0.0
+
+        # Exposure ratio component
+        equity = balance.get('equity', 1000.0)
+        total_exposure = sum(abs(p.market_value) for p in positions.values())
+        exposure_ratio = total_exposure / equity if equity > 0 else 0.0
+
+        if exposure_ratio > 0.5:
+            score += min(exposure_ratio * 20, 30)  # Up to 30 points for high exposure
+
+        # Connectivity component
+        connectivity = self.exchange_connectivity.get(exchange, {})
+        if not connectivity.get('connected', True):
+            score += 20  # Major penalty for disconnection
+
+        latency = connectivity.get('latency_ms', 100)
+        if latency > 1000:  # High latency
+            score += 10
+
+        # Position concentration component
+        if positions:
+            max_position_value = max(abs(p.market_value) for p in positions.values())
+            total_value = sum(abs(p.market_value) for p in positions.values())
+            concentration = max_position_value / total_value if total_value > 0 else 0.0
+
+            if concentration > 0.5:  # 50%+ concentration
+                score += concentration * 15
+
+        return min(score, 100.0)  # Cap at 100
+
+    def _initialize_exchange_risk_profiles(self):
+        """Initialize risk profiles for different exchanges."""
+        # Exchange risk profiles based on reliability, liquidity, and regulatory factors
+        self.exchange_profiles = {
+            'binance': {
+                'reliability_score': 9.5,  # High reliability
+                'liquidity_score': 9.8,    # Excellent liquidity
+                'latency_score': 9.2,      # Low latency
+                'regulatory_risk': 3.0,    # Moderate regulatory risk
+                'default_limits': RiskLimits(
+                    max_position_size=50000.0,
+                    max_portfolio_risk=25.0,
+                    max_drawdown=15.0,
+                    max_leverage=10.0,
+                    max_orders_per_minute=100,
+                    restricted_symbols=[]
+                )
+            },
+            'hyperliquid': {
+                'reliability_score': 8.5,
+                'liquidity_score': 8.0,
+                'latency_score': 9.5,      # Very low latency
+                'regulatory_risk': 6.0,    # Higher regulatory uncertainty
+                'default_limits': RiskLimits(
+                    max_position_size=25000.0,
+                    max_portfolio_risk=20.0,
+                    max_drawdown=12.0,
+                    max_leverage=5.0,
+                    max_orders_per_minute=50,
+                    restricted_symbols=[]
+                )
+            },
+            'coinbase': {
+                'reliability_score': 9.0,
+                'liquidity_score': 9.0,
+                'latency_score': 8.5,
+                'regulatory_risk': 2.0,    # Low regulatory risk (US regulated)
+                'default_limits': RiskLimits(
+                    max_position_size=30000.0,
+                    max_portfolio_risk=22.0,
+                    max_drawdown=10.0,
+                    max_leverage=3.0,      # Conservative leverage
+                    max_orders_per_minute=75,
+                    restricted_symbols=[]
+                )
+            },
+            'kraken': {
+                'reliability_score': 8.8,
+                'liquidity_score': 8.5,
+                'latency_score': 8.8,
+                'regulatory_risk': 2.5,
+                'default_limits': RiskLimits(
+                    max_position_size=20000.0,
+                    max_portfolio_risk=18.0,
+                    max_drawdown=12.0,
+                    max_leverage=5.0,
+                    max_orders_per_minute=60,
+                    restricted_symbols=[]
+                )
+            }
+        }
+
+    def _calculate_exchange_specific_limits(self, exchange: str) -> RiskLimits:
+        """Calculate risk limits specific to an exchange based on its profile."""
+        if exchange not in self.exchange_profiles:
+            # Default conservative limits for unknown exchanges
+            return RiskLimits(
+                max_position_size=10000.0,
+                max_portfolio_risk=15.0,
+                max_drawdown=10.0,
+                max_leverage=2.0,
+                max_orders_per_minute=30,
+                restricted_symbols=[]
+            )
+
+        profile = self.exchange_profiles[exchange]
+        base_limits = profile['default_limits']
+
+        # Adjust limits based on current connectivity and market conditions
+        connectivity = self.exchange_connectivity.get(exchange, {})
+        flux_multiplier = 1.0 - (self.current_flux_level * 0.3)
+
+        # Connectivity-based adjustments
+        connectivity_multiplier = 1.0
+        if not connectivity.get('connected', True):
+            connectivity_multiplier = 0.5  # Severe reduction if disconnected
+        elif connectivity.get('latency_ms', 100) > 500:
+            connectivity_multiplier = 0.8  # Moderate reduction for high latency
+
+        # Apply adjustments
+        adjusted_limits = RiskLimits(
+            max_position_size=base_limits.max_position_size * flux_multiplier * connectivity_multiplier,
+            max_portfolio_risk=base_limits.max_portfolio_risk * flux_multiplier,
+            max_drawdown=base_limits.max_drawdown,
+            max_leverage=base_limits.max_leverage * connectivity_multiplier,
+            max_orders_per_minute=int(base_limits.max_orders_per_minute * connectivity_multiplier),
+            restricted_symbols=base_limits.restricted_symbols.copy()
+        )
+
+        # Store for this exchange
+        self.exchange_risk_limits[exchange] = adjusted_limits
+        return adjusted_limits
+
+    def _check_exchange_isolation_violations(self) -> List[Dict[str, Any]]:
+        """Check for exchange-specific risk limit violations."""
+        violations = []
+
+        for exchange, positions in self.exchange_positions.items():
+            exchange_limits = self._calculate_exchange_specific_limits(exchange)
+            exchange_balance = self.exchange_balances.get(exchange, {})
+
+            # Calculate exchange-specific exposure
+            total_exposure = sum(abs(p.market_value) for p in positions.values())
+            equity = exchange_balance.get('equity', 1000.0)
+
+            # Position size violations
+            for symbol, position in positions.items():
+                if abs(position.market_value) > exchange_limits.max_position_size:
+                    violations.append({
+                        'type': 'exchange_position_size',
+                        'exchange': exchange,
+                        'symbol': symbol,
+                        'message': f"{exchange} position {symbol} exceeds limit ${exchange_limits.max_position_size:.0f}",
+                        'severity': 'high',
+                        'current_value': abs(position.market_value),
+                        'limit_value': exchange_limits.max_position_size
+                    })
+
+            # Portfolio risk violations
+            exposure_ratio = total_exposure / equity if equity > 0 else 0.0
+            if exposure_ratio > exchange_limits.max_portfolio_risk / 100:
+                violations.append({
+                    'type': 'exchange_portfolio_risk',
+                    'exchange': exchange,
+                    'message': f"{exchange} portfolio risk {exposure_ratio:.1%} exceeds limit {exchange_limits.max_portfolio_risk:.1f}%",
+                    'severity': 'high',
+                    'current_value': exposure_ratio * 100,
+                    'limit_value': exchange_limits.max_portfolio_risk
+                })
+
+            # Order frequency check (simplified - would need actual order tracking)
+            # This is a placeholder for more sophisticated order rate limiting
+
+        return violations
+
+    def _monitor_arbitrage_risks(self) -> Dict[str, Any]:
+        """Monitor cross-exchange arbitrage opportunities and associated risks."""
+        arbitrage_opportunities = {}
+        arbitrage_risks = {}
+
+        if len(self.exchange_positions) < 2:
+            return {'opportunities': arbitrage_opportunities, 'risks': arbitrage_risks}
+
+        # Get all symbols across exchanges
+        all_symbols = set()
+        for positions in self.exchange_positions.values():
+            all_symbols.update(positions.keys())
+
+        for symbol in all_symbols:
+            exchange_prices = {}
+            exchange_positions = {}
+
+            # Collect prices and positions for this symbol across exchanges
+            for exchange, positions in self.exchange_positions.items():
+                if symbol in positions:
+                    position = positions[symbol]
+                    # Estimate price from market value and quantity
+                    if position.quantity != 0:
+                        estimated_price = abs(position.market_value / position.quantity)
+                        exchange_prices[exchange] = estimated_price
+                        exchange_positions[exchange] = position
+
+            if len(exchange_prices) >= 2:
+                # Calculate price differences
+                prices = list(exchange_prices.values())
+                exchanges = list(exchange_prices.keys())
+
+                max_price = max(prices)
+                min_price = min(prices)
+                price_spread = (max_price - min_price) / min_price if min_price > 0 else 0.0
+
+                # Identify arbitrage opportunity
+                if price_spread > 0.005:  # 0.5% spread threshold
+                    arbitrage_opportunities[symbol] = {
+                        'spread_pct': price_spread * 100,
+                        'buy_exchange': exchanges[prices.index(min_price)],
+                        'sell_exchange': exchanges[prices.index(max_price)],
+                        'potential_profit_pct': price_spread * 100,
+                        'exchanges_involved': exchanges
+                    }
+
+                    # Calculate arbitrage risk
+                    arbitrage_risks[symbol] = self._assess_arbitrage_risk(
+                        symbol, exchange_positions, price_spread
+                    )
+
+        return {
+            'opportunities': arbitrage_opportunities,
+            'risks': arbitrage_risks,
+            'total_opportunities': len(arbitrage_opportunities),
+            'high_risk_arbitrage': len([r for r in arbitrage_risks.values() if r.get('risk_level') == 'high'])
+        }
+
+    def _assess_arbitrage_risk(self, symbol: str, exchange_positions: Dict[str, Position],
+                              price_spread: float) -> Dict[str, Any]:
+        """Assess risks associated with arbitrage opportunity."""
+        risk_factors = []
+
+        # Execution risk - based on position sizes and liquidity
+        total_arbitrage_size = 0
+        for position in exchange_positions.values():
+            total_arbitrage_size += abs(position.quantity)
+
+        # Smaller arbitrage sizes are riskier (harder to execute)
+        if total_arbitrage_size < 1.0:  # Less than 1 unit
+            risk_factors.append('small_size')
+        elif total_arbitrage_size > 10.0:  # Large size
+            risk_factors.append('large_size')
+
+        # Connectivity risk
+        disconnected_exchanges = []
+        for exchange in exchange_positions.keys():
+            connectivity = self.exchange_connectivity.get(exchange, {})
+            if not connectivity.get('connected', True):
+                disconnected_exchanges.append(exchange)
+                risk_factors.append('connectivity_risk')
+
+        # Latency risk
+        high_latency_exchanges = []
+        for exchange in exchange_positions.keys():
+            connectivity = self.exchange_connectivity.get(exchange, {})
+            if connectivity.get('latency_ms', 0) > 500:  # High latency
+                high_latency_exchanges.append(exchange)
+                risk_factors.append('latency_risk')
+
+        # Price slippage risk
+        if price_spread < 0.01:  # Tight spread
+            risk_factors.append('slippage_risk')
+
+        # Regulatory risk (simplified)
+        if len(exchange_positions) > 2:
+            risk_factors.append('multi_exchange_complexity')
+
+        # Calculate overall risk level
+        risk_score = len(risk_factors) * 15  # 15 points per risk factor
+        risk_level = 'low'
+        if risk_score > 50:
+            risk_level = 'high'
+        elif risk_score > 25:
+            risk_level = 'medium'
+
+        return {
+            'risk_level': risk_level,
+            'risk_score': min(risk_score, 100),
+            'risk_factors': risk_factors,
+            'disconnected_exchanges': disconnected_exchanges,
+            'high_latency_exchanges': high_latency_exchanges,
+            'recommended_action': self._get_arbitrage_recommendation(risk_level, price_spread)
+        }
+
+    def _get_arbitrage_recommendation(self, risk_level: str, price_spread: float) -> str:
+        """Get recommendation for arbitrage execution based on risk and spread."""
+        if risk_level == 'high':
+            return 'avoid'
+        elif risk_level == 'medium':
+            if price_spread > 0.02:  # 2% spread
+                return 'monitor_closely'
+            else:
+                return 'consider_small_size'
+        else:  # low risk
+            if price_spread > 0.015:  # 1.5% spread
+                return 'execute'
+            else:
+                return 'monitor'
+
+    def _perform_portfolio_reconciliation(self) -> Dict[str, Any]:
+        """Perform portfolio reconciliation across all exchanges."""
+        reconciliation_results = {
+            'reconciled': True,
+            'discrepancies': [],
+            'total_exchanges': len(self.exchange_positions),
+            'reconciled_positions': {},
+            'reconciliation_timestamp': time.time()
+        }
+
+        # Aggregate positions across all exchanges
+        aggregated_positions = self._aggregate_cross_exchange_positions()
+
+        # Check for discrepancies in position reporting
+        for symbol in aggregated_positions.keys():
+            symbol_discrepancies = []
+
+            # Check each exchange's reporting for this symbol
+            exchange_reports = {}
+            for exchange, positions in self.exchange_positions.items():
+                if symbol in positions:
+                    position = positions[symbol]
+                    exchange_reports[exchange] = {
+                        'quantity': position.quantity,
+                        'market_value': position.market_value,
+                        'unrealized_pnl': position.unrealized_pnl
+                    }
+
+            # Check for consistency across exchanges
+            if len(exchange_reports) > 1:
+                quantities = [report['quantity'] for report in exchange_reports.values()]
+                market_values = [report['market_value'] for report in exchange_reports.values()]
+
+                # Check quantity consistency (should net to aggregated quantity)
+                net_quantity = sum(quantities)
+                aggregated_quantity = aggregated_positions[symbol].quantity
+
+                if abs(net_quantity - aggregated_quantity) > 0.001:
+                    symbol_discrepancies.append({
+                        'type': 'quantity_mismatch',
+                        'description': f"Net quantity {net_quantity:.4f} != aggregated {aggregated_quantity:.4f}",
+                        'severity': 'medium'
+                    })
+
+                # Check for significant value discrepancies
+                avg_market_value = np.mean(market_values)
+                value_std = np.std(market_values)
+
+                if value_std / avg_market_value > 0.05:  # 5% standard deviation
+                    symbol_discrepancies.append({
+                        'type': 'value_volatility',
+                        'description': f"High value volatility: std={value_std:.2f}, mean={avg_market_value:.2f}",
+                        'severity': 'low'
+                    })
+
+            if symbol_discrepancies:
+                reconciliation_results['discrepancies'].append({
+                    'symbol': symbol,
+                    'issues': symbol_discrepancies,
+                    'exchanges_reported': list(exchange_reports.keys())
+                })
+                reconciliation_results['reconciled'] = False
+
+        # Check balance reconciliation
+        total_balance_discrepancy = self._check_balance_reconciliation()
+        if total_balance_discrepancy > 1.0:  # $1 threshold
+            reconciliation_results['discrepancies'].append({
+                'type': 'balance_discrepancy',
+                'description': f"Total balance discrepancy: ${total_balance_discrepancy:.2f}",
+                'severity': 'high'
+            })
+            reconciliation_results['reconciled'] = False
+
+        reconciliation_results['reconciled_positions'] = {k: v.__dict__ for k, v in aggregated_positions.items()}
+
+        return reconciliation_results
+
+    def _check_balance_reconciliation(self) -> float:
+        """Check for balance discrepancies across exchanges."""
+        # Calculate total equity across all exchanges
+        total_reported_equity = sum(balance.get('equity', 0.0)
+                                  for balance in self.exchange_balances.values())
+
+        # Calculate total position value
+        total_position_value = sum(sum(abs(p.market_value) for p in positions.values())
+                                 for positions in self.exchange_positions.values())
+
+        # Calculate expected total balance (this is simplified)
+        # In practice, this would compare against a master ledger
+        expected_total = total_reported_equity
+
+        # For now, return a simulated discrepancy
+        # In production, this would compare against known totals
+        return abs(total_position_value - expected_total) * 0.1  # 10% of difference as discrepancy
+
+    def _monitor_exchange_connectivity(self) -> Dict[str, Any]:
+        """Monitor connectivity health across all exchanges."""
+        connectivity_report = {
+            'overall_health': 'healthy',
+            'exchange_status': {},
+            'connectivity_score': 100.0,
+            'issues': [],
+            'last_check': time.time()
+        }
+
+        total_score = 0.0
+        total_exchanges = len(self.exchange_connectivity)
+
+        for exchange, status in self.exchange_connectivity.items():
+            exchange_health = {
+                'connected': status.get('connected', False),
+                'latency_ms': status.get('latency_ms', 0),
+                'api_status': status.get('api_status', 'unknown'),
+                'last_update': status.get('last_update', 0),
+                'health_score': 100.0
+            }
+
+            # Calculate health score for this exchange
+            score = 100.0
+
+            # Connectivity penalty
+            if not exchange_health['connected']:
+                score -= 50.0
+                connectivity_report['issues'].append({
+                    'exchange': exchange,
+                    'type': 'disconnected',
+                    'severity': 'critical',
+                    'description': f"{exchange} is disconnected"
+                })
+
+            # Latency penalty
+            latency = exchange_health['latency_ms']
+            if latency > 1000:
+                score -= 30.0
+                connectivity_report['issues'].append({
+                    'exchange': exchange,
+                    'type': 'high_latency',
+                    'severity': 'high',
+                    'description': f"{exchange} latency: {latency}ms"
+                })
+            elif latency > 500:
+                score -= 15.0
+                connectivity_report['issues'].append({
+                    'exchange': exchange,
+                    'type': 'elevated_latency',
+                    'severity': 'medium',
+                    'description': f"{exchange} latency: {latency}ms"
+                })
+
+            # API status penalty
+            if exchange_health['api_status'] == 'degraded':
+                score -= 20.0
+                connectivity_report['issues'].append({
+                    'exchange': exchange,
+                    'type': 'api_degraded',
+                    'severity': 'medium',
+                    'description': f"{exchange} API status: degraded"
+                })
+
+            # Staleness check
+            time_since_update = time.time() - exchange_health['last_update']
+            if time_since_update > 300:  # 5 minutes
+                score -= 25.0
+                connectivity_report['issues'].append({
+                    'exchange': exchange,
+                    'type': 'stale_data',
+                    'severity': 'high',
+                    'description': f"{exchange} data stale: {time_since_update:.0f}s old"
+                })
+
+            exchange_health['health_score'] = max(0.0, score)
+            connectivity_report['exchange_status'][exchange] = exchange_health
+            total_score += score
+
+        # Calculate overall health
+        if total_exchanges > 0:
+            connectivity_report['connectivity_score'] = total_score / total_exchanges
+
+        # Determine overall health status
+        score = connectivity_report['connectivity_score']
+        if score < 50:
+            connectivity_report['overall_health'] = 'critical'
+        elif score < 70:
+            connectivity_report['overall_health'] = 'degraded'
+        elif score < 90:
+            connectivity_report['overall_health'] = 'warning'
+        else:
+            connectivity_report['overall_health'] = 'healthy'
+
+        return connectivity_report
 
     def _calculate_portfolio_risk(self) -> float:
         """Calculate total portfolio risk as percentage."""
@@ -1648,10 +2310,36 @@ class RiskAgent(BaseAgent):
 
         cprint(emergency_details, "red", attrs=["bold"])
 
-        # Broadcast emergency stop command
+        # Get cross-exchange positions for coordination
+        cross_exchange_positions = self._aggregate_cross_exchange_positions()
+
+        # Broadcast emergency stop command to all exchanges
         if self.communication_bus:
-            emergency_message = Message(
-                message_id=f"emergency_stop_{int(time.time())}",
+            # Send coordinated emergency stop to all exchange adapters
+            for exchange in self.exchange_positions.keys():
+                exchange_emergency = Message(
+                    message_id=f"emergency_stop_{exchange}_{int(time.time())}",
+                    sender_id=self.agent_id,
+                    message_type=MessageType.COMMAND,
+                    topic=f"exchange_{exchange}_emergency_stop",
+                    payload={
+                        'exchange': exchange,
+                        'reason': self.emergency_reason,
+                        'assessment': assessment.__dict__,
+                        'ai_confirmed': ai_confirmed,
+                        'ai_confidence': ai_confidence,
+                        'coordinated_stop': True,
+                        'affected_positions': list(self.exchange_positions[exchange].keys()),
+                        'timestamp': time.time()
+                    },
+                    priority=MessagePriority.CRITICAL
+                )
+
+                await self.communication_bus.broadcast_message(exchange_emergency)
+
+            # Send global emergency coordination message
+            global_emergency = Message(
+                message_id=f"global_emergency_stop_{int(time.time())}",
                 sender_id=self.agent_id,
                 message_type=MessageType.COMMAND,
                 topic=str(RiskMessageType.EMERGENCY_STOP.value),
@@ -1660,12 +2348,15 @@ class RiskAgent(BaseAgent):
                     'assessment': assessment.__dict__,
                     'ai_confirmed': ai_confirmed,
                     'ai_confidence': ai_confidence,
+                    'coordinated_exchanges': list(self.exchange_positions.keys()),
+                    'cross_exchange_positions': {k: v.__dict__ for k, v in cross_exchange_positions.items()},
+                    'arbitrage_positions': assessment.arbitrage_analysis.get('opportunities', {}),
                     'timestamp': time.time()
                 },
                 priority=MessagePriority.CRITICAL
             )
 
-            await self.communication_bus.broadcast_message(emergency_message)
+            await self.communication_bus.broadcast_message(global_emergency)
 
     # ============================================================================
     # Communication & Broadcasting
