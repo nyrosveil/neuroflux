@@ -56,7 +56,7 @@ class AgentPriority(Enum):
 
 @dataclass
 class AgentMetrics:
-    """Performance metrics for agent monitoring."""
+    """Enhanced performance metrics for agent monitoring."""
     start_time: datetime = field(default_factory=datetime.now)
     total_requests: int = 0
     successful_requests: int = 0
@@ -67,6 +67,16 @@ class AgentMetrics:
     last_error: Optional[str] = None
     flux_level: float = 0.5
     model_provider: str = "unknown"
+
+    # Enhanced metrics
+    peak_memory_usage: float = 0.0
+    cpu_time_used: float = 0.0
+    cycle_count: int = 0
+    last_cycle_time: float = 0.0
+    average_cycle_time: float = 0.0
+    flux_changes: int = 0
+    recovery_events: int = 0
+    alert_count: int = 0
 
     def update_response_time(self, response_time: float):
         """Update average response time using exponential moving average."""
@@ -85,9 +95,86 @@ class AgentMetrics:
         self.total_tokens_used += tokens_used
         self.update_response_time(response_time)
 
+        # Update enhanced metrics
+        self._update_enhanced_metrics()
+
+        # Check for alerts
+        self._check_alerts()
+
     def get_success_rate(self) -> float:
         """Calculate success rate percentage."""
         return (self.successful_requests / self.total_requests * 100) if self.total_requests > 0 else 0.0
+
+    def _update_enhanced_metrics(self):
+        """Update enhanced performance metrics."""
+        try:
+            import psutil
+            import os
+
+            # Update memory usage
+            process = psutil.Process(os.getpid())
+            memory_mb = process.memory_info().rss / 1024 / 1024
+            self.peak_memory_usage = max(self.peak_memory_usage, memory_mb)
+
+            # Update CPU time
+            cpu_times = process.cpu_times()
+            self.cpu_time_used = cpu_times.user + cpu_times.system
+
+        except ImportError:
+            # psutil not available
+            pass
+        except Exception as e:
+            logger.warning(f"Error updating enhanced metrics: {e}")
+
+    def _check_alerts(self):
+        """Check for alert conditions and trigger alerts."""
+        alerts = []
+
+        # Error rate alert
+        if self.total_requests > 10:
+            error_rate = self.failed_requests / self.total_requests
+            if error_rate > 0.3:  # 30% error rate
+                alerts.append({
+                    'type': 'high_error_rate',
+                    'severity': 'critical',
+                    'message': f'Error rate {error_rate:.1%} exceeds threshold',
+                    'value': error_rate
+                })
+
+        # Response time alert
+        if self.average_response_time > 30.0:  # 30 seconds
+            alerts.append({
+                'type': 'slow_response',
+                'severity': 'warning',
+                'message': f'Average response time {self.average_response_time:.1f}s too high',
+                'value': self.average_response_time
+            })
+
+        # Memory usage alert
+        if self.peak_memory_usage > 500:  # 500MB
+            alerts.append({
+                'type': 'high_memory',
+                'severity': 'warning',
+                'message': f'Peak memory usage {self.peak_memory_usage:.1f}MB exceeds threshold',
+                'value': self.peak_memory_usage
+            })
+
+        # Trigger alerts
+        for alert in alerts:
+            self.alert_count += 1
+            self._trigger_alert(alert)
+
+    def _trigger_alert(self, alert: Dict[str, Any]):
+        """Trigger an alert (can be overridden by subclasses)."""
+        severity = alert.get('severity', 'info')
+        message = alert.get('message', 'Alert triggered')
+
+        if severity == 'critical':
+            logger.error(f"🚨 CRITICAL ALERT: {message}")
+        elif severity == 'warning':
+            logger.warning(f"⚠️ WARNING ALERT: {message}")
+        else:
+            logger.info(f"ℹ️ INFO ALERT: {message}")
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert metrics to dictionary for serialization."""
@@ -103,7 +190,16 @@ class AgentMetrics:
             'flux_level': self.flux_level,
             'model_provider': self.model_provider,
             'success_rate': round(self.get_success_rate(), 2),
-            'uptime_seconds': (datetime.now() - self.start_time).total_seconds()
+            'uptime_seconds': (datetime.now() - self.start_time).total_seconds(),
+            # Enhanced metrics
+            'peak_memory_usage': round(self.peak_memory_usage, 2),
+            'cpu_time_used': round(self.cpu_time_used, 2),
+            'cycle_count': self.cycle_count,
+            'last_cycle_time': round(self.last_cycle_time, 3),
+            'average_cycle_time': round(self.average_cycle_time, 3),
+            'flux_changes': self.flux_changes,
+            'recovery_events': self.recovery_events,
+            'alert_count': self.alert_count
         }
 
 class BaseAgent(ABC):
@@ -300,29 +396,32 @@ class BaseAgent(ABC):
 
     def pause(self) -> bool:
         """
-        Pause agent execution.
+        Pause agent execution with validation.
 
         Returns:
             bool: True if paused successfully
         """
         with self._lock:
-            if self.status != AgentStatus.RUNNING:
+            if self.status not in [AgentStatus.RUNNING, AgentStatus.READY]:
+                logger.warning(f"Cannot pause agent {self.agent_id} in status {self.status.value}")
                 return False
 
+            old_status = self.status
             self.status = AgentStatus.PAUSED
             self._notify_status_change()
-            logger.info(f"⏸️ Agent {self.agent_id} paused")
+            logger.info(f"⏸️ Agent {self.agent_id} paused from {old_status.value}")
             return True
 
     def resume(self) -> bool:
         """
-        Resume agent execution.
+        Resume agent execution with validation.
 
         Returns:
             bool: True if resumed successfully
         """
         with self._lock:
             if self.status != AgentStatus.PAUSED:
+                logger.warning(f"Cannot resume agent {self.agent_id} in status {self.status.value}")
                 return False
 
             self.status = AgentStatus.RUNNING
@@ -330,12 +429,98 @@ class BaseAgent(ABC):
             logger.info(f"▶️ Agent {self.agent_id} resumed")
             return True
 
+    def restart(self) -> bool:
+        """
+        Restart the agent completely.
+
+        Returns:
+            bool: True if restarted successfully
+        """
+        logger.info(f"🔄 Restarting agent {self.agent_id}")
+
+        # Stop current execution
+        if not self.stop():
+            logger.error(f"Failed to stop agent {self.agent_id} for restart")
+            return False
+
+        # Brief pause
+        time.sleep(1.0)
+
+        # Reinitialize
+        if not self.initialize():
+            logger.error(f"Failed to reinitialize agent {self.agent_id}")
+            return False
+
+        # Start again
+        if not self.start():
+            logger.error(f"Failed to restart agent {self.agent_id}")
+            return False
+
+        logger.info(f"✅ Agent {self.agent_id} restarted successfully")
+        return True
+
+    def health_check(self) -> Dict[str, Any]:
+        """
+        Perform a comprehensive health check.
+
+        Returns:
+            Dict containing health status
+        """
+        health = {
+            'agent_id': self.agent_id,
+            'status': self.status.value,
+            'healthy': True,
+            'issues': [],
+            'checks': {}
+        }
+
+        # Status check
+        health['checks']['status'] = {
+            'healthy': self.status not in [AgentStatus.ERROR],
+            'value': self.status.value
+        }
+
+        # Memory check
+        try:
+            import psutil
+            import os
+            process = psutil.Process(os.getpid())
+            memory_mb = process.memory_info().rss / 1024 / 1024
+            health['checks']['memory'] = {
+                'healthy': memory_mb < 1000,  # 1GB threshold
+                'value': round(memory_mb, 1)
+            }
+        except:
+            health['checks']['memory'] = {'healthy': True, 'value': 'unknown'}
+
+        # Performance check
+        success_rate = self.metrics.get_success_rate()
+        health['checks']['performance'] = {
+            'healthy': success_rate > 80.0,
+            'value': round(success_rate, 1)
+        }
+
+        # Error check
+        recent_errors = len([e for e in getattr(self, '_error_history', [])
+                           if time.time() - e['timestamp'] < 300])
+        health['checks']['errors'] = {
+            'healthy': recent_errors < 5,
+            'value': recent_errors
+        }
+
+        # Overall health
+        health['healthy'] = all(check['healthy'] for check in health['checks'].values())
+        health['issues'] = [name for name, check in health['checks'].items() if not check['healthy']]
+
+        return health
+
     def _run_agent_loop(self):
         """Main agent execution loop."""
         try:
             self._on_agent_start()
 
             while not self.should_stop and self.is_running:
+                cycle_start = time.time()
                 try:
                     # Update flux level if adaptive
                     if self.adaptive_behavior:
@@ -344,16 +529,26 @@ class BaseAgent(ABC):
                     # Execute agent logic
                     self._execute_agent_cycle()
 
+                    # Track cycle metrics
+                    cycle_time = time.time() - cycle_start
+                    self._record_cycle_metrics(cycle_time)
+
                     # Sleep between cycles
                     time.sleep(self._get_cycle_interval())
 
                 except Exception as e:
-                    logger.error(f"Error in agent cycle: {e}")
+                    error_msg = f"Error in agent cycle: {e}"
+                    logger.error(error_msg)
                     self.metrics.record_request(False, response_time=0.0)
                     self.metrics.last_error = str(e)
 
-                    # Implement backoff strategy
-                    time.sleep(min(60.0, 2 ** self.metrics.error_count))
+                    # Enhanced error handling and recovery
+                    self._handle_cycle_error(e)
+
+                    # Implement adaptive backoff strategy
+                    backoff_time = self._calculate_backoff_time()
+                    logger.info(f"Backing off for {backoff_time:.1f} seconds")
+                    time.sleep(backoff_time)
 
             self._on_agent_stop()
 
@@ -370,10 +565,253 @@ class BaseAgent(ABC):
         pass
 
     def _update_flux_level(self):
-        """Update flux level based on market conditions or agent performance."""
-        # Default implementation - can be overridden by subclasses
-        # This could integrate with market data, performance metrics, etc.
-        pass
+        """Advanced flux level adaptation based on multiple factors."""
+        try:
+            current_time = time.time()
+            # Throttle updates to avoid excessive computation
+            if hasattr(self, '_last_flux_update') and (current_time - self._last_flux_update) < 30.0:
+                return
+
+            self._last_flux_update = current_time
+
+            # Calculate flux factors
+            performance_factor = self._calculate_performance_factor()
+            market_factor = self._calculate_market_factor()
+            error_factor = self._calculate_error_factor()
+            load_factor = self._calculate_load_factor()
+
+            # Combine factors with weights
+            weights = {
+                'performance': 0.4,
+                'market': 0.3,
+                'error': 0.2,
+                'load': 0.1
+            }
+
+            new_flux = (
+                performance_factor * weights['performance'] +
+                market_factor * weights['market'] +
+                error_factor * weights['error'] +
+                load_factor * weights['load']
+            )
+
+            # Apply smoothing to prevent drastic changes
+            smoothing_factor = 0.1
+            new_flux = (smoothing_factor * new_flux) + ((1 - smoothing_factor) * self.flux_level)
+
+            # Clamp to valid range
+            new_flux = max(0.0, min(1.0, new_flux))
+
+            # Only update if change is significant
+            if abs(new_flux - self.flux_level) > 0.05:
+                old_flux = self.flux_level
+                self.update_flux_level(new_flux)
+                logger.info(f"🌊 Agent {self.agent_id} flux adapted: {old_flux:.2f} → {new_flux:.2f} "
+                           f"(perf:{performance_factor:.2f}, market:{market_factor:.2f}, "
+                           f"error:{error_factor:.2f}, load:{load_factor:.2f})")
+
+        except Exception as e:
+            logger.error(f"Error updating flux level: {e}")
+
+    def _calculate_performance_factor(self) -> float:
+        """Calculate flux factor based on agent performance."""
+        if self.metrics.total_requests == 0:
+            return 0.5  # Neutral
+
+        success_rate = self.metrics.get_success_rate()
+        avg_response_time = self.metrics.average_response_time
+
+        # Higher success rate and lower response time = higher flux tolerance
+        performance_score = (success_rate / 100.0) * 0.7 + (1.0 / (1.0 + avg_response_time)) * 0.3
+        return performance_score
+
+    def _calculate_market_factor(self) -> float:
+        """Calculate flux factor based on market conditions."""
+        # Default implementation - subclasses can override with actual market data
+        # This could integrate with market volatility, trend strength, etc.
+        return 0.5  # Neutral - subclasses should override
+
+    def _calculate_error_factor(self) -> float:
+        """Calculate flux factor based on error patterns."""
+        if self.metrics.total_requests == 0:
+            return 0.5
+
+        error_rate = self.metrics.failed_requests / self.metrics.total_requests
+
+        # Higher error rate = lower flux (more conservative)
+        if error_rate > 0.2:
+            return 0.2  # Very conservative
+        elif error_rate > 0.1:
+            return 0.4  # Conservative
+        elif error_rate > 0.05:
+            return 0.6  # Moderate
+        else:
+            return 0.8  # Aggressive
+
+    def _calculate_load_factor(self) -> float:
+        """Calculate flux factor based on system load."""
+        try:
+            import psutil
+            cpu_percent = psutil.cpu_percent(interval=0.1)
+            memory_percent = psutil.virtual_memory().percent
+
+            # High load = lower flux (reduce computational intensity)
+            load_score = 1.0 - ((cpu_percent + memory_percent) / 200.0)
+            return max(0.1, min(1.0, load_score))
+
+        except ImportError:
+            # psutil not available
+            return 0.5
+        except Exception as e:
+            logger.warning(f"Error calculating load factor: {e}")
+            return 0.5
+
+    def _handle_cycle_error(self, error: Exception):
+        """Handle errors that occur during agent cycles with recovery strategies."""
+        error_type = type(error).__name__
+
+        # Track error patterns
+        if not hasattr(self, '_error_history'):
+            self._error_history = []
+        self._error_history.append({
+            'timestamp': time.time(),
+            'error_type': error_type,
+            'error_message': str(error)
+        })
+
+        # Keep only recent errors (last 10)
+        self._error_history = self._error_history[-10:]
+
+        # Analyze error patterns
+        recent_errors = [e for e in self._error_history
+                        if time.time() - e['timestamp'] < 300]  # Last 5 minutes
+
+        # Implement recovery strategies based on error patterns
+        if len(recent_errors) >= 3:
+            # Multiple recent errors - implement recovery
+            self.record_recovery_event()
+            self._implement_error_recovery(error_type, recent_errors)
+
+        # Log error details
+        logger.warning(f"Agent {self.agent_id} cycle error: {error_type} - {error}")
+
+    def _implement_error_recovery(self, error_type: str, recent_errors: list):
+        """Implement specific recovery strategies based on error patterns."""
+        try:
+            if error_type in ['ConnectionError', 'TimeoutError']:
+                # Network issues - reduce frequency and implement retry
+                logger.warning(f"Network errors detected, reducing cycle frequency")
+                self._temporary_reduce_frequency()
+
+            elif error_type in ['RateLimitError', 'TooManyRequests']:
+                # Rate limiting - increase delays
+                logger.warning(f"Rate limiting detected, increasing delays")
+                self._increase_delays()
+
+            elif error_type in ['MemoryError', 'OSError']:
+                # Resource issues - reduce flux and cleanup
+                logger.warning(f"Resource issues detected, reducing flux and cleaning up")
+                self.update_flux_level(max(0.1, self.flux_level * 0.8))
+                self._emergency_cleanup()
+
+            elif len(recent_errors) >= 5:
+                # Persistent errors - pause agent temporarily
+                logger.error(f"Persistent errors detected, pausing agent temporarily")
+                self._temporary_pause()
+
+        except Exception as e:
+            logger.error(f"Error in recovery implementation: {e}")
+
+    def _calculate_backoff_time(self) -> float:
+        """Calculate adaptive backoff time based on error patterns."""
+        base_backoff = 5.0  # Base 5 seconds
+
+        # Exponential backoff based on error rate
+        if self.metrics.total_requests > 0:
+            error_rate = self.metrics.failed_requests / self.metrics.total_requests
+            # Higher error rate = longer backoff
+            backoff_multiplier = 1 + (error_rate * 5)  # Up to 6x base backoff
+        else:
+            backoff_multiplier = 1.0
+
+        # Cap at 300 seconds (5 minutes)
+        backoff_time = min(300.0, base_backoff * backoff_multiplier)
+
+        # Adjust based on flux level (higher flux = shorter backoff)
+        flux_adjustment = 1.0 - (self.flux_level * 0.5)
+        backoff_time *= flux_adjustment
+
+        return max(1.0, backoff_time)
+
+    def _temporary_reduce_frequency(self):
+        """Temporarily reduce agent cycle frequency."""
+        if not hasattr(self, '_original_cycle_interval'):
+            self._original_cycle_interval = self._get_cycle_interval()
+        # Double the cycle interval temporarily
+        self.config['cycle_interval'] = self._original_cycle_interval * 2.0
+        logger.info(f"Temporarily increased cycle interval to {self.config['cycle_interval']}s")
+
+    def _increase_delays(self):
+        """Increase delays between operations."""
+        if not hasattr(self, '_original_delays'):
+            self._original_delays = {}
+        # Increase various delays by 50%
+        for key in ['api_delay', 'request_delay', 'cycle_delay']:
+            if key in self.config:
+                self._original_delays[key] = self.config[key]
+                self.config[key] *= 1.5
+        logger.info("Increased delays due to rate limiting")
+
+    def _emergency_cleanup(self):
+        """Perform emergency cleanup to free resources."""
+        try:
+            # Force garbage collection
+            import gc
+            collected = gc.collect()
+            logger.info(f"Emergency cleanup: collected {collected} objects")
+
+            # Reduce flux temporarily to ease load
+            if self.flux_level > 0.3:
+                self.update_flux_level(self.flux_level * 0.8)
+
+        except Exception as e:
+            logger.error(f"Error in emergency cleanup: {e}")
+
+    def _record_cycle_metrics(self, cycle_time: float):
+        """Record cycle execution metrics."""
+        self.metrics.cycle_count += 1
+        self.metrics.last_cycle_time = cycle_time
+
+        # Update average cycle time using exponential moving average
+        alpha = 0.1
+        self.metrics.average_cycle_time = (
+            alpha * cycle_time +
+            (1 - alpha) * self.metrics.average_cycle_time
+        )
+
+    def record_flux_change(self):
+        """Record a flux level change."""
+        self.metrics.flux_changes += 1
+
+    def record_recovery_event(self):
+        """Record a recovery event."""
+        self.metrics.recovery_events += 1
+
+    def _temporary_pause(self, duration: float = 60.0):
+        """Temporarily pause agent execution."""
+        def resume_agent():
+            time.sleep(duration)
+            if self.status == AgentStatus.PAUSED:
+                self.resume()
+                logger.info(f"Agent {self.agent_id} automatically resumed after {duration}s pause")
+
+        # Start resume thread
+        resume_thread = threading.Thread(target=resume_agent, daemon=True)
+        resume_thread.start()
+
+        # Pause the agent
+        self.pause()
+        logger.warning(f"Agent {self.agent_id} temporarily paused for {duration}s due to persistent errors")
 
     def _get_cycle_interval(self) -> float:
         """Get the interval between agent cycles in seconds."""
@@ -447,12 +885,17 @@ class BaseAgent(ABC):
         Args:
             new_flux_level: New flux level (0-1)
         """
+        old_flux = self.flux_level
         self.flux_level = max(0.0, min(1.0, new_flux_level))
         self.metrics.flux_level = self.flux_level
 
+        # Record flux change if significant
+        if abs(self.flux_level - old_flux) > 0.01:
+            self.record_flux_change()
+
         # Update LLM model if it supports flux adaptation
         if self.llm_model and hasattr(self.llm_model, 'apply_flux_adaptation'):
-            logger.info(f"🌊 Agent {self.agent_id} flux level updated to {self.flux_level:.2f}")
+            logger.info(f"🌊 Agent {self.agent_id} flux level updated: {old_flux:.2f} → {self.flux_level:.2f}")
 
     def add_status_callback(self, callback: Callable[[AgentStatus], None]):
         """Add a callback for status changes."""
