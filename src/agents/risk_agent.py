@@ -24,8 +24,18 @@ from enum import Enum
 from termcolor import cprint
 from dotenv import load_dotenv
 import numpy as np
+import pandas as pd
 from scipy import stats
 from scipy.optimize import minimize
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, accuracy_score
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+import warnings
+warnings.filterwarnings('ignore')
 
 from ..base_agent import BaseAgent
 from ..orchestration.communication_bus import CommunicationBus, Message, MessageType, MessagePriority
@@ -77,6 +87,570 @@ class RiskAssessment:
     warnings: List[Dict[str, Any]] = field(default_factory=list)
     recommendations: List[Dict[str, Any]] = field(default_factory=list)
     ai_insights: Optional[Dict[str, Any]] = None
+    ai_predictions: Dict[str, Any] = field(default_factory=dict)  # AI risk predictions
+    ai_confidence: float = 0.0  # AI prediction confidence score
+
+
+@dataclass
+class AIPrediction:
+    """AI-powered risk prediction result."""
+    predicted_risk_level: float  # 0-100 risk score
+    confidence_score: float  # 0-1 confidence level
+    predicted_volatility: float  # Predicted volatility percentage
+    risk_trend: str  # "increasing", "decreasing", "stable"
+    time_horizon: int  # Prediction horizon in seconds
+    feature_importance: Dict[str, float] = field(default_factory=dict)
+    prediction_timestamp: float = field(default_factory=time.time)
+
+
+class AIRiskAdvisor:
+    """
+    AI-powered risk advisor for intelligent risk assessment and prediction.
+    """
+
+    def __init__(self, model_dir: str = "src/data/risk_agent/models/"):
+        self.model_dir = model_dir
+        os.makedirs(model_dir, exist_ok=True)
+
+        # ML Models
+        self.risk_predictor = None
+        self.volatility_forecaster = None
+        self.emergency_classifier = None
+
+        # Scalers
+        self.feature_scaler = StandardScaler()
+        self.target_scaler = StandardScaler()
+
+        # Model metadata
+        self.model_version = "1.0.0"
+        self.last_training_time = None
+        self.training_accuracy = 0.0
+
+        # Feature engineering
+        self.feature_columns = [
+            'portfolio_risk_pct', 'max_drawdown_pct', 'position_correlation_risk',
+            'flux_level', 'sharpe_ratio', 'volatility_pct', 'var_95',
+            'total_positions', 'total_exposure', 'equity_balance'
+        ]
+
+        # Initialize models
+        self._initialize_models()
+
+    def _initialize_models(self):
+        """Initialize or load AI models."""
+        try:
+            # Risk prediction model (Random Forest for interpretability)
+            self.risk_predictor = RandomForestRegressor(
+                n_estimators=100,
+                max_depth=10,
+                random_state=42,
+                n_jobs=-1
+            )
+
+            # Volatility forecasting model (LSTM neural network)
+            self.volatility_forecaster = self._build_lstm_model()
+
+            # Emergency classification model
+            self.emergency_classifier = RandomForestClassifier(
+                n_estimators=50,
+                max_depth=8,
+                random_state=42,
+                n_jobs=-1
+            )
+
+            cprint("🧠 AI Risk Advisor models initialized", "blue")
+
+        except Exception as e:
+            cprint(f"⚠️ Failed to initialize AI models: {str(e)}", "yellow")
+            # Fallback to rule-based system
+            self.risk_predictor = None
+            self.volatility_forecaster = None
+            self.emergency_classifier = None
+
+    def _build_lstm_model(self) -> keras.Model:
+        """Build LSTM model for volatility forecasting."""
+        model = keras.Sequential([
+            layers.LSTM(64, input_shape=(None, len(self.feature_columns)), return_sequences=True),
+            layers.Dropout(0.2),
+            layers.LSTM(32),
+            layers.Dropout(0.2),
+            layers.Dense(16, activation='relu'),
+            layers.Dense(1, activation='linear')  # Predict volatility
+        ])
+
+        model.compile(
+            optimizer='adam',
+            loss='mse',
+            metrics=['mae']
+        )
+
+        return model
+
+    def predict_risk_level(self, risk_assessment: RiskAssessment,
+                          historical_data: Optional[List[RiskAssessment]] = None,
+                          current_flux_level: float = FLUX_SENSITIVITY,
+                          positions: Optional[Dict[str, Position]] = None,
+                          portfolio_balance: Optional[Dict[str, float]] = None) -> AIPrediction:
+        """
+        Predict future risk levels using AI models.
+        """
+        if not self.risk_predictor:
+            # Fallback prediction
+            return AIPrediction(
+                predicted_risk_level=risk_assessment.portfolio_risk_pct * 1.1,
+                confidence_score=0.5,
+                predicted_volatility=risk_assessment.volatility_pct,
+                risk_trend="stable",
+                time_horizon=3600  # 1 hour
+            )
+
+        try:
+            # Prepare features
+            features = self._extract_features(risk_assessment, historical_data, current_flux_level, positions, portfolio_balance)
+
+            # Make prediction
+            prediction = self.risk_predictor.predict([features])[0]
+
+            # Calculate confidence based on feature importance variance
+            confidence = self._calculate_prediction_confidence(features)
+
+            # Determine risk trend
+            current_risk = risk_assessment.portfolio_risk_pct
+            risk_trend = "stable"
+            if prediction > current_risk * 1.1:
+                risk_trend = "increasing"
+            elif prediction < current_risk * 0.9:
+                risk_trend = "decreasing"
+
+            # Get feature importance
+            feature_importance = dict(zip(self.feature_columns,
+                                        self.risk_predictor.feature_importances_))
+
+            return AIPrediction(
+                predicted_risk_level=float(prediction),
+                confidence_score=confidence,
+                predicted_volatility=risk_assessment.volatility_pct * 1.05,  # Slight increase assumption
+                risk_trend=risk_trend,
+                time_horizon=3600,  # 1 hour prediction
+                feature_importance=feature_importance
+            )
+
+        except Exception as e:
+            cprint(f"⚠️ AI risk prediction failed: {str(e)}", "yellow")
+            # Return fallback prediction
+            return AIPrediction(
+                predicted_risk_level=risk_assessment.portfolio_risk_pct,
+                confidence_score=0.3,
+                predicted_volatility=risk_assessment.volatility_pct,
+                risk_trend="stable",
+                time_horizon=3600
+            )
+
+    def predict_emergency_probability(self, risk_assessment: RiskAssessment,
+                                    current_flux_level: float = FLUX_SENSITIVITY,
+                                    positions: Optional[Dict[str, Position]] = None,
+                                    portfolio_balance: Optional[Dict[str, float]] = None) -> float:
+        """
+        Predict probability of emergency situation using classification model.
+        """
+        if not self.emergency_classifier:
+            # Rule-based fallback
+            risk_score = risk_assessment.portfolio_risk_pct
+            if risk_score > 15:
+                return 0.8
+            elif risk_score > 10:
+                return 0.5
+            else:
+                return 0.1
+
+        try:
+            features = self._extract_features(risk_assessment, None, current_flux_level, positions, portfolio_balance)
+            probability = self.emergency_classifier.predict_proba([features])[0][1]  # Probability of emergency
+            return float(probability)
+
+        except Exception as e:
+            cprint(f"⚠️ Emergency prediction failed: {str(e)}", "yellow")
+            return 0.0
+
+    def generate_smart_recommendations(self, risk_assessment: RiskAssessment,
+                                     current_flux_level: float = FLUX_SENSITIVITY,
+                                     positions: Optional[Dict[str, Position]] = None,
+                                     portfolio_balance: Optional[Dict[str, float]] = None) -> List[Dict[str, Any]]:
+        """
+        Generate AI-powered risk management recommendations.
+        """
+        recommendations = []
+
+        try:
+            # Analyze current risk state
+            ai_prediction = self.predict_risk_level(risk_assessment, None, current_flux_level, positions, portfolio_balance)
+
+            # High risk prediction
+            if ai_prediction.predicted_risk_level > 20 and ai_prediction.confidence_score > 0.7:
+                recommendations.append({
+                    'type': 'ai_risk_prediction',
+                    'priority': 'high',
+                    'message': f'AI predicts elevated risk ({ai_prediction.predicted_risk_level:.1f}%) in next hour',
+                    'confidence': ai_prediction.confidence_score,
+                    'action': 'reduce_exposure',
+                    'suggested_reduction': min(ai_prediction.predicted_risk_level / 2, 30)
+                })
+
+            # Emergency probability
+            emergency_prob = self.predict_emergency_probability(risk_assessment, current_flux_level, positions, portfolio_balance)
+            if emergency_prob > 0.6:
+                recommendations.append({
+                    'type': 'ai_emergency_alert',
+                    'priority': 'critical',
+                    'message': f'AI predicts {emergency_prob:.1%} probability of emergency situation',
+                    'confidence': ai_prediction.confidence_score,
+                    'action': 'prepare_emergency_procedures'
+                })
+
+            # Volatility-based recommendations
+            if ai_prediction.predicted_volatility > risk_assessment.volatility_pct * 1.2:
+                recommendations.append({
+                    'type': 'ai_volatility_forecast',
+                    'priority': 'medium',
+                    'message': f'AI forecasts increased volatility ({ai_prediction.predicted_volatility:.1f}%)',
+                    'action': 'tighten_stops',
+                    'suggested_stop_adjustment': 0.02  # 2% tighter stops
+                })
+
+            # Portfolio optimization recommendations
+            if positions and portfolio_balance:
+                portfolio_recs = self._generate_portfolio_optimization_recommendations(risk_assessment, positions, portfolio_balance)
+                recommendations.extend(portfolio_recs)
+
+                # Position sizing recommendations
+                sizing_recs = self._generate_position_sizing_recommendations(risk_assessment, positions, portfolio_balance)
+                recommendations.extend(sizing_recs)
+
+            # Market timing recommendations
+            timing_recs = self._generate_market_timing_recommendations(ai_prediction, risk_assessment)
+            recommendations.extend(timing_recs)
+
+            # Feature importance insights
+            if ai_prediction.feature_importance:
+                top_features = sorted(ai_prediction.feature_importance.items(),
+                                    key=lambda x: x[1], reverse=True)[:3]
+                recommendations.append({
+                    'type': 'ai_insight',
+                    'priority': 'low',
+                    'message': f'Top risk factors: {", ".join([f"{k}({v:.1%})" for k, v in top_features])}',
+                    'action': 'monitor_key_factors'
+                })
+
+        except Exception as e:
+            cprint(f"⚠️ AI recommendations failed: {str(e)}", "yellow")
+
+        return recommendations
+
+    def _generate_portfolio_optimization_recommendations(self, risk_assessment: RiskAssessment,
+                                                       positions: Optional[Dict[str, Position]] = None,
+                                                       portfolio_balance: Optional[Dict[str, float]] = None) -> List[Dict[str, Any]]:
+        """Generate portfolio optimization recommendations."""
+        recommendations = []
+
+        if not positions or not portfolio_balance:
+            return recommendations
+
+        portfolio_value = portfolio_balance.get('equity', 1000.0)
+
+        # Diversification analysis
+        position_weights = {}
+        for symbol, position in positions.items():
+            weight = abs(position.market_value) / portfolio_value
+            position_weights[symbol] = weight
+
+        # Check for over-concentration
+        if position_weights:
+            max_weight = max(position_weights.values())
+            if max_weight > 0.3:  # 30% concentration
+                concentrated_symbol = max(position_weights, key=lambda k: position_weights[k])
+                recommendations.append({
+                    'type': 'diversification',
+                    'priority': 'medium',
+                    'message': f'Position {concentrated_symbol} is {max_weight:.1%} of portfolio - consider reducing',
+                    'action': 'reduce_position',
+                    'target_symbol': concentrated_symbol,
+                    'suggested_weight': 0.2  # Target 20%
+                })
+
+        # Risk parity suggestions
+        if len(positions) > 1:
+            # Simple risk parity: equal risk contribution
+            equal_weight = 1.0 / len(positions)
+            for symbol, current_weight in position_weights.items():
+                if abs(current_weight - equal_weight) > 0.1:  # 10% deviation
+                    recommendations.append({
+                        'type': 'risk_parity',
+                        'priority': 'low',
+                        'message': f'Adjust {symbol} weight from {current_weight:.1%} toward {equal_weight:.1%} for better risk distribution',
+                        'action': 'rebalance',
+                        'target_symbol': symbol,
+                        'suggested_weight': equal_weight
+                    })
+
+        return recommendations
+
+    def _generate_position_sizing_recommendations(self, risk_assessment: RiskAssessment,
+                                                positions: Dict[str, Position],
+                                                portfolio_balance: Dict[str, float]) -> List[Dict[str, Any]]:
+        """Generate position sizing recommendations."""
+        recommendations = []
+
+        portfolio_value = portfolio_balance.get('equity', 1000.0)
+
+        for symbol, position in positions.items():
+            position_value = abs(position.market_value)
+            position_weight = position_value / portfolio_value
+
+            # Kelly criterion approximation (simplified)
+            # Assume win rate and win/loss ratio based on historical performance
+            if hasattr(position, 'unrealized_pnl') and position_value > 0:
+                pnl_ratio = position.unrealized_pnl / position_value
+
+                # Conservative Kelly sizing
+                if pnl_ratio > 0.05:  # Profitable position
+                    optimal_size = min(position_weight * 1.2, 0.25)  # Increase up to 25%
+                    if optimal_size > position_weight * 1.1:  # At least 10% increase
+                        recommendations.append({
+                            'type': 'kelly_sizing',
+                            'priority': 'low',
+                            'message': f'Consider increasing {symbol} position size to {optimal_size:.1%} of portfolio',
+                            'action': 'increase_position',
+                            'target_symbol': symbol,
+                            'suggested_weight': optimal_size
+                        })
+                elif pnl_ratio < -0.05:  # Losing position
+                    reduction_size = position_weight * 0.8  # 20% reduction
+                    recommendations.append({
+                        'type': 'loss_management',
+                        'priority': 'medium',
+                        'message': f'Consider reducing {symbol} position due to losses (current P&L: {pnl_ratio:.1%})',
+                        'action': 'reduce_position',
+                        'target_symbol': symbol,
+                        'suggested_weight': reduction_size
+                    })
+
+        return recommendations
+
+    def _generate_market_timing_recommendations(self, ai_prediction: AIPrediction,
+                                              risk_assessment: RiskAssessment) -> List[Dict[str, Any]]:
+        """Generate market timing recommendations based on AI predictions."""
+        recommendations = []
+
+        # Risk trend analysis
+        if ai_prediction.risk_trend == "increasing":
+            recommendations.append({
+                'type': 'market_timing',
+                'priority': 'high',
+                'message': 'AI predicts increasing risk - consider reducing overall exposure',
+                'action': 'reduce_exposure',
+                'timeframe': 'immediate'
+            })
+        elif ai_prediction.risk_trend == "decreasing":
+            recommendations.append({
+                'type': 'market_timing',
+                'priority': 'low',
+                'message': 'AI predicts decreasing risk - favorable conditions for increasing exposure',
+                'action': 'increase_exposure',
+                'timeframe': 'gradual'
+            })
+
+        # Volatility timing
+        if ai_prediction.predicted_volatility > risk_assessment.volatility_pct * 1.5:
+            recommendations.append({
+                'type': 'volatility_timing',
+                'priority': 'medium',
+                'message': 'High volatility expected - consider volatility-based strategies',
+                'action': 'implement_hedges',
+                'suggested_strategy': 'options_hedging'
+            })
+
+        return recommendations
+
+    def _extract_features(self, risk_assessment: RiskAssessment,
+                         historical_data: Optional[List[RiskAssessment]] = None,
+                         current_flux_level: float = FLUX_SENSITIVITY,
+                         positions: Optional[Dict[str, Position]] = None,
+                         portfolio_balance: Optional[Dict[str, float]] = None) -> np.ndarray:
+        """Extract features from risk assessment for ML models."""
+        features = []
+
+        # Current risk metrics
+        features.extend([
+            risk_assessment.portfolio_risk_pct,
+            risk_assessment.max_drawdown_pct,
+            risk_assessment.position_correlation_risk,
+            current_flux_level,
+            risk_assessment.sharpe_ratio,
+            risk_assessment.volatility_pct,
+            risk_assessment.var_95,
+            len(positions) if positions else 0,
+            sum(abs(p.market_value) for p in positions.values()) if positions else 0,
+            portfolio_balance.get('equity', 1000.0) if portfolio_balance else 1000.0
+        ])
+
+        # Historical trends (if available)
+        if historical_data and len(historical_data) >= 5:
+            recent = historical_data[-5:]
+            risk_trend = np.mean([r.portfolio_risk_pct for r in recent[-3:]]) - np.mean([r.portfolio_risk_pct for r in recent[:2]])
+            volatility_trend = np.mean([r.volatility_pct for r in recent[-3:]]) - np.mean([r.volatility_pct for r in recent[:2]])
+            features.extend([risk_trend, volatility_trend])
+        else:
+            features.extend([0.0, 0.0])  # No trend data
+
+        return np.array(features)
+
+    def _calculate_prediction_confidence(self, features: np.ndarray) -> float:
+        """Calculate confidence score for predictions."""
+        # Simple confidence based on feature variance and model certainty
+        if self.risk_predictor:
+            # Use standard deviation of tree predictions as uncertainty measure
+            tree_predictions = np.array([tree.predict([features]) for tree in self.risk_predictor.estimators_])
+            prediction_std = np.std(tree_predictions)
+            base_prediction = np.mean(tree_predictions)
+
+            # Confidence decreases with higher prediction variance
+            if base_prediction > 0:
+                relative_uncertainty = prediction_std / abs(base_prediction)
+                confidence = max(0.1, 1.0 - relative_uncertainty)
+                return min(confidence, 0.95)
+            else:
+                return 0.5
+        else:
+            return 0.5
+
+    def train_models(self, historical_assessments: List[RiskAssessment]) -> bool:
+        """
+        Train AI models using historical risk assessment data.
+        """
+        if len(historical_assessments) < 20:
+            cprint("⚠️ Insufficient data for AI training (need at least 20 assessments)", "yellow")
+            return False
+
+        try:
+            cprint("🧠 Training AI risk models...", "blue")
+
+            # Prepare training data
+            X, y_risk, y_emergency = self._prepare_training_data(historical_assessments)
+
+            if len(X) < 10:
+                cprint("⚠️ Insufficient training samples", "yellow")
+                return False
+
+            # Train risk predictor
+            X_train, X_test, y_train, y_test = train_test_split(X, y_risk, test_size=0.2, random_state=42)
+            self.risk_predictor.fit(X_train, y_train)
+
+            # Evaluate
+            y_pred = self.risk_predictor.predict(X_test)
+            mse = mean_squared_error(y_test, y_pred)
+            self.training_accuracy = 1.0 - min(mse / np.var(y_test), 1.0)  # R²-like score
+
+            # Train emergency classifier
+            _, _, y_emergency_train, y_emergency_test = train_test_split(X, y_emergency, test_size=0.2, random_state=42)
+            self.emergency_classifier.fit(X_train, y_emergency_train)
+
+            # Evaluate classifier
+            emergency_pred = self.emergency_classifier.predict(X_test)
+            accuracy = accuracy_score(y_emergency_test, emergency_pred)
+
+            self.last_training_time = time.time()
+
+            cprint(f"✅ AI models trained - Risk predictor R²: {self.training_accuracy:.3f}, Emergency classifier accuracy: {accuracy:.3f}", "green")
+
+            # Save models
+            self._save_models()
+
+            return True
+
+        except Exception as e:
+            cprint(f"❌ AI training failed: {str(e)}", "red")
+            return False
+
+    def _prepare_training_data(self, assessments: List[RiskAssessment]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Prepare training data from historical assessments."""
+        X = []
+        y_risk = []
+        y_emergency = []
+
+        for i, assessment in enumerate(assessments):
+            # Skip if not enough historical data for features
+            if i < 5:
+                continue
+
+            # Extract features
+            historical_context = assessments[max(0, i-10):i]  # Last 10 assessments as context
+            features = self._extract_features(assessment, historical_context)
+            X.append(features)
+
+            # Target: future risk level (next assessment's portfolio risk)
+            if i < len(assessments) - 1:
+                future_risk = assessments[i+1].portfolio_risk_pct
+                y_risk.append(future_risk)
+
+                # Emergency target: whether emergency was triggered in next assessment
+                future_emergency = 1 if assessments[i+1].circuit_breaker_state == CircuitBreakerState.EMERGENCY else 0
+                y_emergency.append(future_emergency)
+
+        return np.array(X), np.array(y_risk), np.array(y_emergency)
+
+    def _save_models(self):
+        """Save trained models to disk."""
+        try:
+            import joblib
+
+            # Save scikit-learn models
+            joblib.dump(self.risk_predictor, os.path.join(self.model_dir, 'risk_predictor.pkl'))
+            joblib.dump(self.emergency_classifier, os.path.join(self.model_dir, 'emergency_classifier.pkl'))
+
+            # Save model metadata
+            metadata = {
+                'version': self.model_version,
+                'training_time': self.last_training_time,
+                'accuracy': self.training_accuracy,
+                'feature_columns': self.feature_columns
+            }
+
+            with open(os.path.join(self.model_dir, 'model_metadata.json'), 'w') as f:
+                json.dump(metadata, f, indent=2, default=str)
+
+            cprint("💾 AI models saved", "blue")
+
+        except Exception as e:
+            cprint(f"⚠️ Failed to save models: {str(e)}", "yellow")
+
+    def load_models(self) -> bool:
+        """Load trained models from disk."""
+        try:
+            import joblib
+
+            model_path = os.path.join(self.model_dir, 'risk_predictor.pkl')
+            if os.path.exists(model_path):
+                self.risk_predictor = joblib.load(model_path)
+                self.emergency_classifier = joblib.load(os.path.join(self.model_dir, 'emergency_classifier.pkl'))
+
+                # Load metadata
+                metadata_path = os.path.join(self.model_dir, 'model_metadata.json')
+                if os.path.exists(metadata_path):
+                    with open(metadata_path, 'r') as f:
+                        metadata = json.load(f)
+                        self.model_version = metadata.get('version', '1.0.0')
+                        self.last_training_time = metadata.get('training_time')
+                        self.training_accuracy = metadata.get('accuracy', 0.0)
+
+                cprint("📂 AI models loaded", "blue")
+                return True
+            else:
+                cprint("⚠️ No saved AI models found", "yellow")
+                return False
+
+        except Exception as e:
+            cprint(f"⚠️ Failed to load models: {str(e)}", "yellow")
+            return False
 
 
 class RiskAgent(BaseAgent):
@@ -126,6 +700,10 @@ class RiskAgent(BaseAgent):
         # AI risk advisor settings
         self.ai_confirmation_required = USE_AI_CONFIRMATION
         self.ai_risk_threshold = 0.8  # Confidence threshold for AI decisions
+
+        # AI Risk Advisor
+        self.ai_advisor = AIRiskAdvisor()
+        self.ai_enabled = True
 
         # Monitoring intervals
         self.risk_check_interval = 5.0  # Check risk every 5 seconds
@@ -345,6 +923,87 @@ class RiskAgent(BaseAgent):
         # Perform risk checks
         violations, warnings, recommendations = self._check_risk_limits()
 
+        # AI-powered risk assessment
+        ai_predictions = {}
+        ai_insights = {}
+        ai_confidence = 0.0
+
+        if self.ai_enabled and self.ai_advisor:
+            try:
+                # Get AI risk predictions
+                ai_prediction = self.ai_advisor.predict_risk_level(
+                    RiskAssessment(
+                        timestamp=timestamp,
+                        circuit_breaker_state=self.circuit_breaker_state,
+                        portfolio_risk_pct=portfolio_risk_pct,
+                        max_drawdown_pct=max_drawdown_pct,
+                        position_correlation_risk=position_correlation_risk,
+                        flux_adjusted_limits=flux_adjusted_limits,
+                        var_95=var_95,
+                        expected_shortfall_95=expected_shortfall_95,
+                        stress_test_results=stress_test_results,
+                        sharpe_ratio=sharpe_ratio,
+                        volatility_pct=volatility_pct
+                    ),
+                    self.risk_assessment_history[-20:] if len(self.risk_assessment_history) >= 20 else None,
+                    self.current_flux_level,
+                    self.positions,
+                    self.portfolio_balance
+                )
+                ai_predictions = ai_prediction.__dict__
+                ai_confidence = ai_prediction.confidence_score
+
+                # Get AI emergency probability
+                emergency_prob = self.ai_advisor.predict_emergency_probability(
+                    RiskAssessment(
+                        timestamp=timestamp,
+                        circuit_breaker_state=self.circuit_breaker_state,
+                        portfolio_risk_pct=portfolio_risk_pct,
+                        max_drawdown_pct=max_drawdown_pct,
+                        position_correlation_risk=position_correlation_risk,
+                        flux_adjusted_limits=flux_adjusted_limits,
+                        var_95=var_95,
+                        expected_shortfall_95=expected_shortfall_95,
+                        stress_test_results=stress_test_results,
+                        sharpe_ratio=sharpe_ratio,
+                        volatility_pct=volatility_pct
+                    ),
+                    self.current_flux_level,
+                    self.positions,
+                    self.portfolio_balance
+                )
+
+                # Generate AI recommendations
+                ai_recommendations = self.ai_advisor.generate_smart_recommendations(
+                    RiskAssessment(
+                        timestamp=timestamp,
+                        circuit_breaker_state=self.circuit_breaker_state,
+                        portfolio_risk_pct=portfolio_risk_pct,
+                        max_drawdown_pct=max_drawdown_pct,
+                        position_correlation_risk=position_correlation_risk,
+                        flux_adjusted_limits=flux_adjusted_limits,
+                        var_95=var_95,
+                        expected_shortfall_95=expected_shortfall_95,
+                        stress_test_results=stress_test_results,
+                        sharpe_ratio=sharpe_ratio,
+                        volatility_pct=volatility_pct
+                    )
+                )
+
+                # Add AI recommendations to existing recommendations
+                recommendations.extend(ai_recommendations)
+
+                ai_insights = {
+                    'emergency_probability': emergency_prob,
+                    'ai_recommendations_count': len(ai_recommendations),
+                    'model_accuracy': getattr(self.ai_advisor, 'training_accuracy', 0.0),
+                    'last_training': getattr(self.ai_advisor, 'last_training_time', None)
+                }
+
+            except Exception as e:
+                cprint(f"⚠️ AI assessment failed: {str(e)}", "yellow")
+                ai_insights = {'error': str(e)}
+
         # Create assessment
         assessment = RiskAssessment(
             timestamp=timestamp,
@@ -360,7 +1019,10 @@ class RiskAgent(BaseAgent):
             volatility_pct=volatility_pct,
             violations=violations,
             warnings=warnings,
-            recommendations=recommendations
+            recommendations=recommendations,
+            ai_insights=ai_insights,
+            ai_predictions=ai_predictions,
+            ai_confidence=ai_confidence
         )
 
         return assessment
@@ -952,11 +1614,39 @@ class RiskAgent(BaseAgent):
             await self._initiate_emergency_stop(assessment)
 
     async def _initiate_emergency_stop(self, assessment: RiskAssessment):
-        """Initiate emergency stop across all trading agents."""
+        """Initiate emergency stop across all trading agents with AI confirmation."""
+        # AI confirmation for emergency stop (if enabled)
+        ai_confirmed = True
+        ai_confidence = 0.0
+
+        if self.ai_enabled and self.ai_advisor and self.ai_confirmation_required:
+            try:
+                emergency_prob = self.ai_advisor.predict_emergency_probability(
+                    assessment,
+                    self.current_flux_level,
+                    self.positions,
+                    self.portfolio_balance
+                )
+
+                ai_confidence = emergency_prob
+                ai_confirmed = emergency_prob >= self.ai_risk_threshold
+
+                if not ai_confirmed:
+                    cprint(f"🤖 AI rejected emergency stop (confidence: {emergency_prob:.2f} < {self.ai_risk_threshold})", "yellow")
+                    # Still proceed but log the AI decision
+                    ai_confirmed = False
+
+            except Exception as e:
+                cprint(f"⚠️ AI confirmation failed: {str(e)} - proceeding with emergency stop", "yellow")
+
         self.emergency_active = True
         self.emergency_reason = f"Risk violation: {len(assessment.violations)} critical violations"
 
-        cprint(f"🚨 EMERGENCY STOP: {self.emergency_reason}", "red", attrs=["bold"])
+        emergency_details = f"🚨 EMERGENCY STOP: {self.emergency_reason}"
+        if self.ai_enabled:
+            emergency_details += f" | AI Confidence: {ai_confidence:.2f}"
+
+        cprint(emergency_details, "red", attrs=["bold"])
 
         # Broadcast emergency stop command
         if self.communication_bus:
@@ -968,6 +1658,8 @@ class RiskAgent(BaseAgent):
                 payload={
                     'reason': self.emergency_reason,
                     'assessment': assessment.__dict__,
+                    'ai_confirmed': ai_confirmed,
+                    'ai_confidence': ai_confidence,
                     'timestamp': time.time()
                 },
                 priority=MessagePriority.CRITICAL
@@ -1078,17 +1770,78 @@ class RiskAgent(BaseAgent):
         self.current_flux_level = max(0.0, min(1.0, self.current_flux_level))  # Clamp to [0,1]
 
     def _adjust_risk_limits_for_flux(self):
-        """Adjust risk limits based on current flux level."""
+        """Adjust risk limits based on current flux level and AI recommendations."""
+        # Base flux adjustment
         flux_multiplier = 1.0 - (self.current_flux_level * 0.3)  # Reduce by up to 30%
 
+        # AI-based adaptive adjustments
+        ai_adjustments = self._calculate_ai_limit_adjustments()
+
+        # Combine flux and AI adjustments
+        final_multiplier = flux_multiplier * ai_adjustments.get('overall_multiplier', 1.0)
+
+        # Ensure reasonable bounds
+        final_multiplier = max(0.1, min(final_multiplier, 2.0))  # Between 10% and 200%
+
         self.current_risk_limits = RiskLimits(
-            max_position_size=self.base_risk_limits.max_position_size * flux_multiplier,
-            max_portfolio_risk=self.base_risk_limits.max_portfolio_risk * flux_multiplier,
+            max_position_size=self.base_risk_limits.max_position_size * final_multiplier,
+            max_portfolio_risk=self.base_risk_limits.max_portfolio_risk * final_multiplier,
             max_drawdown=self.base_risk_limits.max_drawdown,
             max_leverage=self.base_risk_limits.max_leverage,
             max_orders_per_minute=self.base_risk_limits.max_orders_per_minute,
             restricted_symbols=self.base_risk_limits.restricted_symbols.copy()
         )
+
+    def _calculate_ai_limit_adjustments(self) -> Dict[str, float]:
+        """Calculate AI-based risk limit adjustments."""
+        adjustments = {'overall_multiplier': 1.0}
+
+        if not self.ai_enabled or not self.ai_advisor or not self.risk_assessment_history:
+            return adjustments
+
+        try:
+            # Analyze recent performance
+            recent_assessments = self.risk_assessment_history[-10:]  # Last 10 assessments
+
+            if len(recent_assessments) < 5:
+                return adjustments
+
+            # Calculate performance metrics
+            avg_violations = np.mean([len(a.violations) for a in recent_assessments])
+            avg_sharpe = np.mean([a.sharpe_ratio for a in recent_assessments])
+            avg_volatility = np.mean([a.volatility_pct for a in recent_assessments])
+
+            # AI-based adjustments logic
+            multiplier = 1.0
+
+            # If low violations and good Sharpe, increase limits slightly
+            if avg_violations < 0.5 and avg_sharpe > 0.5:
+                multiplier *= 1.1  # 10% increase
+
+            # If high violations, reduce limits
+            elif avg_violations > 2.0:
+                multiplier *= 0.8  # 20% reduction
+
+            # Volatility-based adjustments
+            if avg_volatility > 25:  # High volatility
+                multiplier *= 0.9  # 10% reduction
+            elif avg_volatility < 10:  # Low volatility
+                multiplier *= 1.05  # 5% increase
+
+            # Recent emergency events - be more conservative
+            recent_emergencies = sum(1 for a in recent_assessments
+                                   if a.circuit_breaker_state == CircuitBreakerState.EMERGENCY)
+            if recent_emergencies > 0:
+                multiplier *= 0.85  # 15% reduction
+
+            adjustments['overall_multiplier'] = multiplier
+            adjustments['performance_score'] = (avg_sharpe + 1) / 2  # Normalize to 0-1
+            adjustments['stability_score'] = max(0, 1 - avg_violations / 5)  # Lower violations = higher stability
+
+        except Exception as e:
+            cprint(f"⚠️ AI limit adjustment failed: {str(e)}", "yellow")
+
+        return adjustments
 
     # ============================================================================
     # Data Persistence
@@ -1345,6 +2098,48 @@ class RiskAgent(BaseAgent):
         except Exception as e:
             cprint(f"❌ Failed to force emergency stop: {str(e)}", "red")
             return False
+
+    async def train_ai_models(self) -> bool:
+        """Train AI models using historical risk assessment data."""
+        if not self.ai_enabled or not self.ai_advisor:
+            cprint("⚠️ AI not enabled", "yellow")
+            return False
+
+        if len(self.risk_assessment_history) < 30:
+            cprint("⚠️ Insufficient historical data for AI training (need at least 30 assessments)", "yellow")
+            return False
+
+        try:
+            cprint("🧠 Training AI risk models with historical data...", "blue")
+            success = self.ai_advisor.train_models(self.risk_assessment_history)
+
+            if success:
+                cprint("✅ AI models trained successfully", "green")
+                # Save updated models
+                self.ai_advisor._save_models()
+            else:
+                cprint("❌ AI model training failed", "red")
+
+            return success
+
+        except Exception as e:
+            cprint(f"❌ AI training error: {str(e)}", "red")
+            return False
+
+    async def get_ai_status(self) -> Dict[str, Any]:
+        """Get AI system status and performance metrics."""
+        if not self.ai_enabled or not self.ai_advisor:
+            return {'enabled': False, 'status': 'AI not available'}
+
+        return {
+            'enabled': True,
+            'models_loaded': self.ai_advisor.risk_predictor is not None,
+            'training_accuracy': getattr(self.ai_advisor, 'training_accuracy', 0.0),
+            'last_training': getattr(self.ai_advisor, 'last_training_time', None),
+            'model_version': getattr(self.ai_advisor, 'model_version', 'unknown'),
+            'feature_count': len(getattr(self.ai_advisor, 'feature_columns', [])),
+            'historical_data_points': len(self.risk_assessment_history)
+        }
 
     # ============================================================================
     # Agent Lifecycle
