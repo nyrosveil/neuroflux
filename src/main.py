@@ -68,6 +68,7 @@ ACTIVE_AGENTS = {
     'sniper_agent': True,        # New launch sniping
     'swarm_agent': True,         # Swarm intelligence consensus
     'rbi_agent': True,           # Research-Backed Intelligence
+    'ml_prediction_agent': True, # ML-based price and volume predictions
 
     # Backtesting
     'backtest_runner': False,    # Automated backtesting (run manually)
@@ -86,6 +87,7 @@ AGENT_PRIORITIES = {
     'strategy_agent': 1,        # Trading strategies
     'swarm_agent': 1,           # Swarm consensus
     'rbi_agent': 1,             # RBI analysis
+    'ml_prediction_agent': 1,   # ML predictions (high priority for trading decisions)
     'sniper_agent': 0,          # New launches (lower priority)
     'websearch_agent': 0,       # Background research
     'copybot_agent': 0,         # Copy trading
@@ -144,6 +146,7 @@ class NeuroFluxOrchestrator:
             'swarm_agent': self._safe_import('agents.swarm_agent'),
             'websearch_agent': self._safe_import('agents.websearch_agent'),
             'rbi_agent': self._safe_import('agents.rbi_agent'),
+            'ml_prediction_agent': self._safe_import('agents.ml_prediction_agent'),
             'backtest_runner': self._safe_import('agents.backtest_runner'),
         }
 

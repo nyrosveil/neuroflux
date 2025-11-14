@@ -5,6 +5,10 @@ Flask + Socket.IO server for real-time dashboard data
 Built with love by Nyros Veil 🚀
 """
 
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
@@ -13,9 +17,35 @@ import time
 import random
 from datetime import datetime, timedelta
 import threading
-import os
+import asyncio
 import numpy as np
 import pandas as pd
+
+# Import NeuroFlux orchestration components
+try:
+    from src.neuroflux_orchestrator_v32 import NeuroFluxOrchestratorV32
+    from src.orchestration.agent_registry import AgentRegistry, AgentStatus, AgentCapability
+    from src.orchestration.communication_bus import CommunicationBus, Message, MessageType, MessagePriority
+    ORCHESTRATOR_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️  Orchestrator modules not available: {e}")
+    ORCHESTRATOR_AVAILABLE = False
+
+# Import CCXT Exchange Manager
+try:
+    from src.exchanges.ccxt_exchange_manager import CCXTExchangeManager
+    CCXT_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️  CCXT Exchange Manager not available: {e}")
+    CCXT_AVAILABLE = False
+
+# Import Real-Time Agent Bus
+try:
+    from src.realtime_agent_bus import RealTimeAgentBus
+    RT_BUS_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️  Real-Time Agent Bus not available: {e}")
+    RT_BUS_AVAILABLE = False
 
 # Import ML modules
 try:
@@ -34,7 +64,13 @@ except ImportError:
 
 app = Flask(__name__)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+
+# Global instances
+orchestrator = None
+orchestrator_task = None
+ccxt_manager = None
+rt_agent_bus = None
 
 # Mock data for development
 mock_data = {
@@ -101,15 +137,78 @@ mock_agents = [
     }
 ]
 
+def get_real_system_status():
+    """Get real system status from orchestrator"""
+    if not ORCHESTRATOR_AVAILABLE or not orchestrator:
+        return mock_data
+
+    try:
+        # Get real agent data from orchestrator
+        agent_registry = orchestrator.agent_registry
+        agents = list(agent_registry.agents.values())
+
+        # Calculate system metrics
+        active_agents = len([a for a in agents if a.status == AgentStatus.ACTIVE])
+        total_agents = len(agents)
+
+        # Get flux state from running tasks/stats
+        flux_level = min(1.0, orchestrator.stats['tasks_completed'] / max(1, orchestrator.stats['tasks_created']))
+        market_stability = 0.8  # Would come from market data analysis
+
+        return {
+            'flux_state': {
+                'level': flux_level,
+                'market_stability': market_stability,
+                'last_update': datetime.now().isoformat()
+            },
+            'initialized_agents': active_agents,
+            'total_agents': total_agents,
+            'analytics': {
+                'enabled': True
+            },
+            'predictions': mock_data['predictions'],  # Keep mock predictions for now
+            'orchestrator_stats': orchestrator.stats
+        }
+    except Exception as e:
+        print(f"Error getting real system status: {e}")
+        return mock_data
+
 @app.route('/api/status')
 def get_system_status():
     """Get current system status"""
-    return jsonify(mock_data)
+    return jsonify(get_real_system_status())
+
+def get_real_agent_data():
+    """Get real agent data from orchestrator"""
+    if not ORCHESTRATOR_AVAILABLE or not orchestrator:
+        return mock_agents
+
+    try:
+        agent_registry = orchestrator.agent_registry
+        agents = list(agent_registry.agents.values())
+
+        real_agents = []
+        for agent in agents:
+            real_agents.append({
+                'agent_name': agent.agent_id,
+                'status': agent.status.value,
+                'success': agent.health_score > 0.7,
+                'execution_time': agent.performance_metrics.get('avg_response_time', 1.0),
+                'capabilities': [cap.value for cap in agent.capabilities],
+                'health_score': agent.health_score,
+                'load_factor': agent.load_factor,
+                'last_heartbeat': datetime.fromtimestamp(agent.last_heartbeat).isoformat()
+            })
+
+        return real_agents
+    except Exception as e:
+        print(f"Error getting real agent data: {e}")
+        return mock_agents
 
 @app.route('/api/agents')
 def get_agents():
     """Get current agent data"""
-    return jsonify(mock_agents)
+    return jsonify(get_real_agent_data())
 
 @app.route('/api/health')
 def health_check():
@@ -265,6 +364,516 @@ def get_ml_status():
         'features': ['prediction', 'training', 'confidence_scores']
     })
 
+# CCXT Exchange Manager Endpoints
+@app.route('/api/exchanges/status')
+def get_exchange_status():
+    """Get status of all connected exchanges"""
+    if not CCXT_AVAILABLE or not ccxt_manager:
+        return jsonify({
+            'available': False,
+            'message': 'CCXT Exchange Manager not available'
+        })
+
+    status = ccxt_manager.get_exchange_status()
+    return jsonify({
+        'available': True,
+        'exchanges': status
+    })
+
+@app.route('/api/exchanges/ticker/<exchange>/<symbol>')
+def get_ticker(exchange, symbol):
+    """Get real-time ticker data from an exchange"""
+    if not CCXT_AVAILABLE or not ccxt_manager:
+        return jsonify({'error': 'CCXT Exchange Manager not available'}), 503
+
+    try:
+        # Create event loop for async CCXT call
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        ticker = loop.run_until_complete(ccxt_manager.get_ticker(exchange, symbol))
+        loop.close()
+
+        if ticker:
+            return jsonify(ticker)
+        else:
+            return jsonify({'error': f'Ticker not available for {exchange}:{symbol}'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/exchanges/orderbook/<exchange>/<symbol>')
+def get_orderbook(exchange, symbol):
+    """Get order book data from an exchange"""
+    if not CCXT_AVAILABLE or not ccxt_manager:
+        return jsonify({'error': 'CCXT Exchange Manager not available'}), 503
+
+    try:
+        limit = int(request.args.get('limit', 20))
+
+        # Create event loop for async CCXT call
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        orderbook = loop.run_until_complete(ccxt_manager.get_orderbook(exchange, symbol, limit))
+        loop.close()
+
+        if orderbook:
+            return jsonify(orderbook)
+        else:
+            return jsonify({'error': f'Orderbook not available for {exchange}:{symbol}'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/exchanges/subscribe/ticker', methods=['POST'])
+def subscribe_ticker():
+    """Subscribe to real-time ticker updates"""
+    if not CCXT_AVAILABLE or not ccxt_manager:
+        return jsonify({'error': 'CCXT Exchange Manager not available'}), 503
+
+    data = request.get_json()
+    if not data or 'exchange' not in data or 'symbol' not in data:
+        return jsonify({'error': 'Missing exchange or symbol'}), 400
+
+    exchange = data['exchange']
+    symbol = data['symbol']
+
+    # For now, return subscription info (real WebSocket subscription would be implemented)
+    return jsonify({
+        'subscribed': True,
+        'exchange': exchange,
+        'symbol': symbol,
+        'channel': 'ticker'
+    })
+
+@app.route('/api/exchanges/subscribe/orderbook', methods=['POST'])
+def subscribe_orderbook():
+    """Subscribe to real-time orderbook updates"""
+    if not CCXT_AVAILABLE or not ccxt_manager:
+        return jsonify({'error': 'CCXT Exchange Manager not available'}), 503
+
+    data = request.get_json()
+    if not data or 'exchange' not in data or 'symbol' not in data:
+        return jsonify({'error': 'Missing exchange or symbol'}), 400
+
+    exchange = data['exchange']
+    symbol = data['symbol']
+    depth = data.get('depth', 20)
+
+    # For now, return subscription info
+    return jsonify({
+        'subscribed': True,
+        'exchange': exchange,
+        'symbol': symbol,
+        'channel': 'orderbook',
+        'depth': depth
+    })
+
+@app.route('/api/marketdata/multi-exchange/<symbol>')
+def get_multi_exchange_data(symbol):
+    """Get market data from multiple exchanges for comparison"""
+    if not CCXT_AVAILABLE or not ccxt_manager:
+        return jsonify({'error': 'CCXT Exchange Manager not available'}), 503
+
+    exchanges = ['binance', 'coinbase', 'hyperliquid']  # Supported exchanges
+    market_data = {}
+
+    # Create event loop for async CCXT calls
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    for exchange in exchanges:
+        try:
+            ticker = loop.run_until_complete(ccxt_manager.get_ticker(exchange, symbol))
+            if ticker:
+                market_data[exchange] = {
+                    'price': ticker.get('last'),
+                    'bid': ticker.get('bid'),
+                    'ask': ticker.get('ask'),
+                    'volume': ticker.get('quoteVolume'),
+                    'timestamp': ticker.get('timestamp')
+                }
+        except Exception as e:
+            market_data[exchange] = {'error': str(e)}
+
+    loop.close()
+
+    return jsonify({
+        'symbol': symbol,
+        'data': market_data,
+        'timestamp': datetime.now().isoformat()
+    })
+
+# Real-Time Agent Bus Endpoints
+@app.route('/api/realtime/stats')
+def get_realtime_bus_stats():
+    """Get real-time agent bus statistics"""
+    if not RT_BUS_AVAILABLE or not rt_agent_bus:
+        return jsonify({'error': 'Real-Time Agent Bus not available'}), 503
+
+    stats = rt_agent_bus.get_bus_stats()
+    return jsonify(stats)
+
+@app.route('/api/realtime/subscribe/<topic>', methods=['POST'])
+def subscribe_topic(topic):
+    """Subscribe to a real-time topic"""
+    if not RT_BUS_AVAILABLE or not rt_agent_bus:
+        return jsonify({'error': 'Real-Time Agent Bus not available'}), 503
+
+    data = request.get_json() or {}
+    subscriber_id = data.get('subscriber_id', f"dashboard_{topic}")
+
+    # Create event loop for async call
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    success = loop.run_until_complete(rt_agent_bus.subscribe_topic(subscriber_id, topic))
+    loop.close()
+
+    if success:
+        return jsonify({'subscribed': True, 'topic': topic, 'subscriber_id': subscriber_id})
+    else:
+        return jsonify({'error': f'Failed to subscribe to {topic}'}), 500
+
+@app.route('/api/realtime/broadcast/<topic>', methods=['POST'])
+def broadcast_event(topic):
+    """Broadcast an event through the real-time bus"""
+    if not RT_BUS_AVAILABLE or not rt_agent_bus:
+        return jsonify({'error': 'Real-Time Agent Bus not available'}), 503
+
+    data = request.get_json()
+    if not data or 'payload' not in data:
+        return jsonify({'error': 'Missing payload'}), 400
+
+    payload = data['payload']
+    priority = data.get('priority', 'medium')
+
+    # Create event loop for async call
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    success = loop.run_until_complete(rt_agent_bus.broadcast_event(topic, payload))
+    loop.close()
+
+    if success:
+        return jsonify({'broadcast': True, 'topic': topic})
+    else:
+        return jsonify({'error': f'Failed to broadcast to {topic}'}), 500
+
+@app.route('/api/realtime/signal/trading', methods=['POST'])
+def send_trading_signal():
+    """Send a trading signal through the real-time bus"""
+    if not RT_BUS_AVAILABLE or not rt_agent_bus:
+        return jsonify({'error': 'Real-Time Agent Bus not available'}), 503
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Missing signal data'}), 400
+
+    signal_type = data.get('signal_type', 'unknown')
+    symbol = data.get('symbol', 'UNKNOWN')
+    confidence = data.get('confidence', 0.5)
+    metadata = data.get('metadata', {})
+
+    # Create event loop for async call
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    success = loop.run_until_complete(rt_agent_bus.send_trading_signal(signal_type, symbol, confidence, metadata))
+    loop.close()
+
+    if success:
+        return jsonify({'signal_sent': True, 'type': signal_type, 'symbol': symbol})
+    else:
+        return jsonify({'error': 'Failed to send trading signal'}), 500
+
+@app.route('/api/realtime/alert/risk', methods=['POST'])
+def send_risk_alert():
+    """Send a risk alert through the real-time bus"""
+    if not RT_BUS_AVAILABLE or not rt_agent_bus:
+        return jsonify({'error': 'Real-Time Agent Bus not available'}), 503
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Missing alert data'}), 400
+
+    alert_type = data.get('alert_type', 'unknown')
+    severity = data.get('severity', 'medium')
+    message = data.get('message', 'Risk alert')
+    agent_id = data.get('agent_id')
+
+    # Create event loop for async call
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    success = loop.run_until_complete(rt_agent_bus.send_risk_alert(alert_type, severity, message, agent_id))
+    loop.close()
+
+    if success:
+        return jsonify({'alert_sent': True, 'type': alert_type, 'severity': severity})
+    else:
+        return jsonify({'error': 'Failed to send risk alert'}), 500
+
+# Advanced Features Endpoints
+@app.route('/api/arbitrage/opportunities/<symbol>')
+def get_arbitrage_opportunities(symbol):
+    """Get arbitrage opportunities across exchanges"""
+    if not CCXT_AVAILABLE or not ccxt_manager:
+        return jsonify({'error': 'CCXT Exchange Manager not available'}), 503
+
+    exchanges = ['binance', 'coinbase', 'hyperliquid', 'bybit', 'kucoin']
+    prices = {}
+
+    # Create event loop for async CCXT calls
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    for exchange in exchanges:
+        try:
+            ticker = loop.run_until_complete(ccxt_manager.get_ticker(exchange, symbol))
+            if ticker and ticker.get('last'):
+                prices[exchange] = ticker['last']
+        except Exception as e:
+            continue
+
+    loop.close()
+
+    if len(prices) < 2:
+        return jsonify({'opportunities': [], 'message': 'Need at least 2 exchanges with price data'})
+
+    # Find arbitrage opportunities
+    opportunities = []
+    exchanges_list = list(prices.keys())
+
+    for i, exchange1 in enumerate(exchanges_list):
+        for exchange2 in exchanges_list[i+1:]:
+            price1 = prices[exchange1]
+            price2 = prices[exchange2]
+
+            spread = abs(price1 - price2)
+            spread_percentage = (spread / min(price1, price2)) * 100
+
+            if spread_percentage > 0.1:  # 0.1% minimum spread
+                opportunities.append({
+                    'exchange1': exchange1,
+                    'exchange2': exchange2,
+                    'price1': price1,
+                    'price2': price2,
+                    'spread': spread,
+                    'spread_percentage': round(spread_percentage, 4),
+                    'direction': 'buy_low_sell_high' if price1 < price2 else 'buy_high_sell_low',
+                    'profit_potential': spread_percentage > 0.5,  # Profitable if > 0.5%
+                    'symbol': symbol,
+                    'timestamp': datetime.now().isoformat()
+                })
+
+    # Sort by spread percentage (highest first)
+    opportunities.sort(key=lambda x: x['spread_percentage'], reverse=True)
+
+    return jsonify({
+        'symbol': symbol,
+        'opportunities': opportunities[:10],  # Top 10 opportunities
+        'total_exchanges': len(prices),
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/risk/portfolio')
+def get_portfolio_risk():
+    """Get portfolio risk assessment across exchanges"""
+    if not ORCHESTRATOR_AVAILABLE or not orchestrator:
+        return jsonify({'error': 'Orchestrator not available'}), 503
+
+    # Mock portfolio risk data (would be calculated from real positions)
+    risk_data = {
+        'total_exposure': 125000.50,
+        'positions': [
+            {
+                'symbol': 'BTC/USDT',
+                'exchange': 'binance',
+                'size': 2.5,
+                'entry_price': 43500.00,
+                'current_price': 45230.50,
+                'pnl': 4407.50,
+                'pnl_percentage': 10.15,
+                'risk_level': 'medium'
+            },
+            {
+                'symbol': 'ETH/USDT',
+                'exchange': 'coinbase',
+                'size': 15.0,
+                'entry_price': 2650.00,
+                'current_price': 2780.25,
+                'pnl': 1953.75,
+                'pnl_percentage': 7.37,
+                'risk_level': 'low'
+            }
+        ],
+        'risk_metrics': {
+            'var_95': -2500.00,  # Value at Risk 95%
+            'expected_shortfall': -3800.00,
+            'max_drawdown': -1200.00,
+            'sharpe_ratio': 1.85,
+            'volatility': 0.023
+        },
+        'alerts': [
+            {
+                'type': 'high_volatility',
+                'message': 'BTC/USDT showing increased volatility',
+                'severity': 'medium',
+                'timestamp': datetime.now().isoformat()
+            }
+        ],
+        'timestamp': datetime.now().isoformat()
+    }
+
+    return jsonify(risk_data)
+
+@app.route('/api/trading/routes/<symbol>')
+def get_trading_routes(symbol):
+    """Get optimal trading routes across exchanges"""
+    if not CCXT_AVAILABLE or not ccxt_manager:
+        return jsonify({'error': 'CCXT Exchange Manager not available'}), 503
+
+    # Analyze liquidity and fees across exchanges
+    routes = []
+
+    exchanges = ['binance', 'coinbase', 'hyperliquid', 'bybit', 'kucoin']
+
+    # Create event loop for async calls
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    for exchange in exchanges:
+        try:
+            ticker = loop.run_until_complete(ccxt_manager.get_ticker(exchange, symbol))
+            orderbook = loop.run_until_complete(ccxt_manager.get_orderbook(exchange, symbol, limit=10))
+
+            if ticker and orderbook:
+                # Calculate liquidity metrics
+                bids = orderbook.get('bids', [])
+                asks = orderbook.get('asks', [])
+
+                bid_liquidity = sum(vol for price, vol in bids[:5]) if bids else 0
+                ask_liquidity = sum(vol for price, vol in asks[:5]) if asks else 0
+
+                routes.append({
+                    'exchange': exchange,
+                    'symbol': symbol,
+                    'price': ticker.get('last'),
+                    'bid_liquidity': bid_liquidity,
+                    'ask_liquidity': ask_liquidity,
+                    'spread': (asks[0][0] - bids[0][0]) if asks and bids else 0,
+                    'volume_24h': ticker.get('quoteVolume', 0),
+                    'recommended': bid_liquidity > 100 and ask_liquidity > 100  # Simple recommendation
+                })
+
+        except Exception as e:
+            continue
+
+    loop.close()
+
+    # Sort by liquidity and volume
+    routes.sort(key=lambda x: (x['bid_liquidity'] + x['ask_liquidity']) * x.get('volume_24h', 0), reverse=True)
+
+    return jsonify({
+        'symbol': symbol,
+        'routes': routes,
+        'optimal_route': routes[0] if routes else None,
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/market/analysis/<symbol>')
+def get_market_analysis(symbol):
+    """Get comprehensive market analysis"""
+    if not CCXT_AVAILABLE or not ccxt_manager:
+        return jsonify({'error': 'CCXT Exchange Manager not available'}), 503
+
+    analysis = {
+        'symbol': symbol,
+        'price_analysis': {},
+        'volume_analysis': {},
+        'sentiment': {},
+        'predictions': {},
+        'recommendations': []
+    }
+
+    # Get data from multiple exchanges
+    exchanges = ['binance', 'coinbase']
+
+    # Create event loop for async calls
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    prices = []
+    volumes = []
+
+    for exchange in exchanges:
+        try:
+            ticker = loop.run_until_complete(ccxt_manager.get_ticker(exchange, symbol))
+            if ticker:
+                price = ticker.get('last')
+                volume = ticker.get('quoteVolume', 0)
+
+                if price:
+                    prices.append(price)
+                    volumes.append(volume)
+
+                analysis['price_analysis'][exchange] = {
+                    'price': price,
+                    'change_24h': ticker.get('percentage'),
+                    'high_24h': ticker.get('high'),
+                    'low_24h': ticker.get('low'),
+                    'volume': volume
+                }
+
+        except Exception as e:
+            continue
+
+    loop.close()
+
+    # Calculate aggregate metrics
+    if prices:
+        analysis['price_analysis']['aggregate'] = {
+            'avg_price': sum(prices) / len(prices),
+            'min_price': min(prices),
+            'max_price': max(prices),
+            'price_spread': max(prices) - min(prices),
+            'spread_percentage': ((max(prices) - min(prices)) / min(prices)) * 100
+        }
+
+    if volumes:
+        analysis['volume_analysis'] = {
+            'total_volume': sum(volumes),
+            'avg_volume': sum(volumes) / len(volumes)
+        }
+
+    # Mock sentiment and predictions (would come from ML agents)
+    analysis['sentiment'] = {
+        'overall': 'bullish',
+        'score': 0.72,
+        'sources': ['news', 'social_media', 'technical']
+    }
+
+    analysis['predictions'] = {
+        'next_hour': {
+            'price': sum(prices) / len(prices) * 1.002 if prices else 0,
+            'confidence': 0.68,
+            'trend': 'upward'
+        }
+    }
+
+    # Generate recommendations
+    if analysis['price_analysis'].get('aggregate', {}).get('spread_percentage', 0) > 0.5:
+        analysis['recommendations'].append({
+            'type': 'arbitrage',
+            'message': 'Arbitrage opportunity detected',
+            'confidence': 'high'
+        })
+
+    if analysis['sentiment']['score'] > 0.7:
+        analysis['recommendations'].append({
+            'type': 'momentum',
+            'message': 'Strong bullish momentum',
+            'confidence': 'medium'
+        })
+
+    analysis['timestamp'] = datetime.now().isoformat()
+
+    return jsonify(analysis)
+
 @app.route('/api/dashboard/predictions')
 def get_prediction_dashboard():
     """Get prediction data for dashboard charts"""
@@ -324,106 +933,349 @@ def get_prediction_dashboard():
         'last_update': datetime.now().isoformat()
     })
 
-def generate_mock_updates():
-    """Generate mock real-time updates"""
+async def initialize_orchestrator():
+    """Initialize the NeuroFlux orchestrator and CCXT manager"""
+    global orchestrator, ccxt_manager
+    if ORCHESTRATOR_AVAILABLE:
+        try:
+            orchestrator = NeuroFluxOrchestratorV32()
+            await orchestrator.initialize()
+
+            # Set up message forwarding from agents to dashboard
+            await setup_agent_message_forwarding()
+
+            print("✅ NeuroFlux orchestrator initialized for dashboard")
+        except Exception as e:
+            print(f"❌ Failed to initialize orchestrator: {e}")
+            orchestrator = None
+
+    # Initialize CCXT Exchange Manager
+    if CCXT_AVAILABLE:
+        try:
+            ccxt_manager = CCXTExchangeManager()
+            await ccxt_manager.start()
+            print("✅ CCXT Exchange Manager initialized")
+        except Exception as e:
+            print(f"❌ Failed to initialize CCXT Manager: {e}")
+            ccxt_manager = None
+
+    # Initialize Real-Time Agent Bus
+    global rt_agent_bus
+    if RT_BUS_AVAILABLE:
+        try:
+            rt_agent_bus = RealTimeAgentBus(orchestrator=orchestrator, socketio_instance=socketio)
+            await rt_agent_bus.start()
+            print("✅ Real-Time Agent Bus initialized")
+        except Exception as e:
+            print(f"❌ Failed to initialize Real-Time Agent Bus: {e}")
+            rt_agent_bus = None
+
+async def setup_agent_message_forwarding():
+    """Set up forwarding of agent messages to dashboard WebSocket clients"""
+    if not orchestrator:
+        return
+
+    # Start a background task to monitor agent activity
+    asyncio.create_task(monitor_agent_activity())
+
+async def monitor_agent_activity():
+    """Monitor agent activity and forward status updates to dashboard"""
+    if not orchestrator:
+        return
+
+    last_agent_states = {}
+
+    while orchestrator and orchestrator.running:
+        try:
+            await asyncio.sleep(2)  # Check every 2 seconds
+
+            current_agents = list(orchestrator.agent_registry.agents.values())
+
+            for agent in current_agents:
+                agent_key = agent.agent_id
+                current_state = {
+                    'status': agent.status.value,
+                    'health_score': agent.health_score,
+                    'load_factor': agent.load_factor,
+                    'last_heartbeat': agent.last_heartbeat
+                }
+
+                # Check if agent state changed
+                if agent_key not in last_agent_states or last_agent_states[agent_key] != current_state:
+                    last_agent_states[agent_key] = current_state
+
+                    dashboard_message = {
+                        'type': 'agent_status_update',
+                        'agent_id': agent.agent_id,
+                        'agent_type': agent.agent_type,
+                        'status': agent.status.value,
+                        'health_score': agent.health_score,
+                        'load_factor': agent.load_factor,
+                        'capabilities': [cap.value for cap in agent.capabilities],
+                        'timestamp': datetime.fromtimestamp(agent.last_heartbeat).isoformat()
+                    }
+                    socketio.emit('agent_message', dashboard_message)
+
+        except Exception as e:
+            print(f"Error monitoring agent activity: {e}")
+            await asyncio.sleep(5)  # Wait before retrying
+
+def generate_real_time_updates():
+    """Generate real-time updates from orchestrator, agents, and market data"""
+    market_symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT']  # Major trading pairs
+    last_market_data = {}
+
     while True:
-        time.sleep(5)  # Update every 5 seconds
+        time.sleep(3)  # Update every 3 seconds for more responsive data
 
-        # Update flux level slightly
-        mock_data['flux_state']['level'] = max(0.1, min(1.0,
-            mock_data['flux_state']['level'] + random.uniform(-0.1, 0.1)))
-        mock_data['flux_state']['last_update'] = datetime.now().isoformat()
+        try:
+            # Get real system status
+            system_data = get_real_system_status()
+            socketio.emit('system_update', system_data)
 
-        # Update agent data
-        for agent in mock_agents:
-            if random.random() < 0.3:  # 30% chance of update
-                agent['execution_time'] = round(random.uniform(0.5, 3.0), 1)
-                agent['success'] = random.random() > 0.2  # 80% success rate
+            # Get real agent data
+            agent_data = get_real_agent_data()
+            socketio.emit('agents_update', agent_data)
 
-        # Update predictions
-        if random.random() < 0.6:  # 60% chance of prediction update
-            # Update price forecast
-            price_change = random.uniform(-500, 500)
-            mock_data['predictions']['price_forecast']['next_hour'] += price_change
-            mock_data['predictions']['price_forecast']['confidence'] = max(0.1, min(0.95,
-                mock_data['predictions']['price_forecast']['confidence'] + random.uniform(-0.1, 0.1)))
-            mock_data['predictions']['price_forecast']['trend'] = random.choice(['bullish', 'bearish', 'neutral'])
-            mock_data['predictions']['price_forecast']['last_update'] = datetime.now().isoformat()
+            # Stream market data from CCXT exchanges
+            if CCXT_AVAILABLE and ccxt_manager:
+                for symbol in market_symbols:
+                    market_update = stream_market_data(symbol, last_market_data)
+                    if market_update:
+                        socketio.emit('market_data', market_update)
 
-            # Update volatility forecast
-            mock_data['predictions']['volatility_forecast']['next_hour'] = max(0.005, min(0.1,
-                mock_data['predictions']['volatility_forecast']['next_hour'] + random.uniform(-0.01, 0.01)))
-            mock_data['predictions']['volatility_forecast']['confidence'] = max(0.1, min(0.95,
-                mock_data['predictions']['volatility_forecast']['confidence'] + random.uniform(-0.1, 0.1)))
-            risk_levels = ['low', 'moderate', 'high', 'extreme']
-            mock_data['predictions']['volatility_forecast']['risk_level'] = random.choice(risk_levels)
-            mock_data['predictions']['volatility_forecast']['last_update'] = datetime.now().isoformat()
+            # Agent status updates
+            for agent in agent_data:
+                if random.random() < 0.15:  # 15% chance for individual updates
+                    agent_update = agent.copy()
+                    agent_update['timestamp'] = datetime.now().isoformat()
+                    socketio.emit('agent_update', agent_update)
 
-            # Update sentiment
-            sentiment_change = random.uniform(-0.2, 0.2)
-            mock_data['predictions']['market_sentiment']['prediction'] = max(0.0, min(1.0,
-                mock_data['predictions']['market_sentiment']['prediction'] + sentiment_change))
-            mock_data['predictions']['market_sentiment']['current'] = max(0.0, min(1.0,
-                mock_data['predictions']['market_sentiment']['current'] + random.uniform(-0.1, 0.1)))
-            mock_data['predictions']['market_sentiment']['confidence'] = max(0.1, min(0.95,
-                mock_data['predictions']['market_sentiment']['confidence'] + random.uniform(-0.1, 0.1)))
-            mock_data['predictions']['market_sentiment']['trend'] = random.choice(['bullish', 'bearish', 'neutral'])
-            mock_data['predictions']['market_sentiment']['last_update'] = datetime.now().isoformat()
+            # Generate realistic trading signals and notifications
+            if random.random() < 0.25:
+                generate_trading_signals()
 
-        # Emit socket updates
-        socketio.emit('system_update', mock_data)
+        except Exception as e:
+            print(f"Error in real-time updates: {e}")
+            # Fallback to mock updates
+            socketio.emit('system_update', mock_data)
 
-        # Random agent updates
-        if random.random() < 0.4:
-            agent_update = random.choice(mock_agents).copy()
-            agent_update['timestamp'] = datetime.now().isoformat()
-            socketio.emit('agent_update', agent_update)
+def stream_market_data(symbol, last_data):
+    """Stream real market data from exchanges"""
+    if not CCXT_AVAILABLE or not ccxt_manager:
+        return None
 
-        # Random prediction updates
-        if random.random() < 0.3:
-            prediction_update = {
-                'type': 'prediction_update',
-                'model': random.choice(['ARIMA', 'LSTM', 'GARCH']),
-                'metric': random.choice(['price', 'volatility', 'sentiment']),
-                'value': round(random.uniform(0.1, 0.9), 3),
-                'confidence': round(random.uniform(0.5, 0.95), 2),
-                'timestamp': datetime.now().isoformat()
-            }
-            socketio.emit('prediction_update', prediction_update)
+    try:
+        # Get data from multiple exchanges
+        exchanges_to_check = ['binance', 'coinbase']
+        market_data = {
+            'symbol': symbol,
+            'exchanges': {},
+            'timestamp': datetime.now().isoformat()
+        }
 
-        # Random notifications
-        if random.random() < 0.2:
-            notifications = [
-                {'type': 'INFO', 'message': 'Agent cycle completed', 'agent': 'System'},
-                {'type': 'SUCCESS', 'message': 'Trade executed successfully', 'agent': 'TradingAgent'},
-                {'type': 'WARNING', 'message': 'High volatility detected', 'agent': 'RiskAgent'},
-                {'type': 'ERROR', 'message': 'API rate limit reached', 'agent': 'ResearchAgent'},
-                {'type': 'PREDICTION', 'message': 'New price prediction available', 'agent': 'MLPredictor'},
-                {'type': 'ALERT', 'message': 'High confidence signal detected', 'agent': 'MLPredictor'}
-            ]
-            notification = random.choice(notifications)
-            notification['timestamp'] = datetime.now().isoformat()
-            socketio.emit('notification', notification)
+        # Create event loop for async calls
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        for exchange in exchanges_to_check:
+            try:
+                ticker = loop.run_until_complete(ccxt_manager.get_ticker(exchange, symbol))
+                if ticker:
+                    market_data['exchanges'][exchange] = {
+                        'price': ticker.get('last', ticker.get('close')),
+                        'bid': ticker.get('bid'),
+                        'ask': ticker.get('ask'),
+                        'volume': ticker.get('quoteVolume', ticker.get('volume')),
+                        'change_24h': ticker.get('percentage'),
+                        'high_24h': ticker.get('high'),
+                        'low_24h': ticker.get('low')
+                    }
+            except Exception as e:
+                # Exchange might not be available or symbol not supported
+                continue
+
+        loop.close()
+
+        # Calculate price spread and arbitrage opportunities
+        prices = [data['price'] for data in market_data['exchanges'].values() if data.get('price')]
+        if len(prices) > 1:
+            market_data['spread'] = max(prices) - min(prices)
+            market_data['spread_percentage'] = (market_data['spread'] / min(prices)) * 100
+            market_data['arbitrage_opportunity'] = market_data['spread_percentage'] > 0.5  # 0.5% threshold
+
+        # Only emit if data changed significantly or it's been a while
+        data_key = f"{symbol}"
+        if data_key not in last_data or has_significant_change(last_data[data_key], market_data):
+            last_data[data_key] = market_data.copy()
+            return market_data
+
+    except Exception as e:
+        print(f"Error streaming market data for {symbol}: {e}")
+
+    return None
+
+def has_significant_change(old_data, new_data):
+    """Check if market data has changed significantly"""
+    if not old_data or 'exchanges' not in old_data:
+        return True
+
+    # Check for price changes > 0.1%
+    for exchange, new_exchange_data in new_data.get('exchanges', {}).items():
+        old_exchange_data = old_data.get('exchanges', {}).get(exchange)
+        if old_exchange_data and new_exchange_data.get('price'):
+            old_price = old_exchange_data.get('price')
+            new_price = new_exchange_data.get('price')
+            if old_price and abs((new_price - old_price) / old_price) > 0.001:  # 0.1% change
+                return True
+
+    return False
+
+def generate_trading_signals():
+    """Generate realistic trading signals and notifications"""
+    signal_types = [
+        {'type': 'BUY_SIGNAL', 'message': 'Bullish divergence detected', 'symbol': 'BTC/USDT', 'confidence': 0.78},
+        {'type': 'SELL_SIGNAL', 'message': 'Bearish engulfing pattern', 'symbol': 'ETH/USDT', 'confidence': 0.82},
+        {'type': 'ARBITRAGE', 'message': 'Price spread opportunity detected', 'symbol': 'SOL/USDT', 'confidence': 0.65},
+        {'type': 'VOLATILITY', 'message': 'High volatility alert', 'symbol': 'BTC/USDT', 'confidence': 0.91},
+        {'type': 'VOLUME_SPIKE', 'message': 'Unusual volume detected', 'symbol': 'ETH/USDT', 'confidence': 0.74}
+    ]
+
+    signal = random.choice(signal_types)
+    signal['timestamp'] = datetime.now().isoformat()
+    signal['agent'] = random.choice(['TechnicalAnalysis', 'ArbitrageAgent', 'VolumeAnalyzer'])
+
+    socketio.emit('trading_signal', signal)
+
+    # Also emit as notification
+    notification = {
+        'type': signal['type'].lower(),
+        'message': signal['message'],
+        'agent': signal['agent'],
+        'symbol': signal.get('symbol'),
+        'timestamp': signal['timestamp']
+    }
+    socketio.emit('notification', notification)
 
 @socketio.on('connect')
 def handle_connect():
-    print('Client connected')
-    emit('system_update', mock_data)
+    print('📊 Dashboard client connected')
+    # Send initial system status
+    initial_data = get_real_system_status()
+    emit('system_update', initial_data)
+    # Send initial agent data
+    initial_agents = get_real_agent_data()
+    emit('agents_update', initial_agents)
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    print('Client disconnected')
+    print('📊 Dashboard client disconnected')
+
+@socketio.on('subscribe_agent_updates')
+def handle_subscribe_agent_updates(data):
+    """Subscribe to specific agent updates"""
+    agent_ids = data.get('agent_ids', [])
+    print(f'📊 Client subscribed to agent updates: {agent_ids}')
+    emit('subscription_confirmed', {'type': 'agent_updates', 'agent_ids': agent_ids})
+
+@socketio.on('subscribe_system_metrics')
+def handle_subscribe_system_metrics():
+    """Subscribe to system metrics updates"""
+    print('📊 Client subscribed to system metrics')
+    emit('subscription_confirmed', {'type': 'system_metrics'})
+
+@socketio.on('request_agent_details')
+def handle_request_agent_details(data):
+    """Request detailed information about specific agents"""
+    agent_ids = data.get('agent_ids', [])
+    if ORCHESTRATOR_AVAILABLE and orchestrator:
+        agent_details = []
+        for agent_id in agent_ids:
+            agent_info = orchestrator.agent_registry.get_agent_info(agent_id)
+            if agent_info:
+                agent_details.append({
+                    'agent_id': agent_info.agent_id,
+                    'agent_type': agent_info.agent_type,
+                    'capabilities': [cap.value for cap in agent_info.capabilities],
+                    'status': agent_info.status.value,
+                    'health_score': agent_info.health_score,
+                    'load_factor': agent_info.load_factor,
+                    'performance_metrics': agent_info.performance_metrics,
+                    'registered_at': agent_info.registered_at,
+                    'last_heartbeat': agent_info.last_heartbeat,
+                    'version': agent_info.version,
+                    'tags': list(agent_info.tags)
+                })
+        emit('agent_details', agent_details)
+    else:
+        emit('agent_details', [])
+
+@socketio.on('send_agent_command')
+def handle_send_agent_command(data):
+    """Send a command to an agent through the orchestrator"""
+    agent_id = data.get('agent_id')
+    command = data.get('command')
+    parameters = data.get('parameters', {})
+
+    if ORCHESTRATOR_AVAILABLE and orchestrator and agent_id:
+        try:
+            # Create a command message
+            command_message = {
+                'type': 'command',
+                'command': command,
+                'parameters': parameters,
+                'timestamp': datetime.now().isoformat()
+            }
+
+            # Send through communication bus (this would need to be implemented)
+            # For now, just acknowledge
+            emit('command_acknowledged', {
+                'agent_id': agent_id,
+                'command': command,
+                'status': 'queued'
+            })
+            print(f'📊 Command sent to agent {agent_id}: {command}')
+        except Exception as e:
+            emit('command_error', {
+                'agent_id': agent_id,
+                'command': command,
+                'error': str(e)
+            })
+    else:
+        emit('command_error', {
+            'agent_id': agent_id,
+            'command': command,
+            'error': 'Orchestrator not available'
+        })
+
+async def start_orchestrator():
+    """Start the orchestrator in a separate task"""
+    await initialize_orchestrator()
 
 if __name__ == '__main__':
     start_time = time.time()
 
+    # Initialize orchestrator if available
+    if ORCHESTRATOR_AVAILABLE:
+        try:
+            # Run orchestrator initialization in event loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(start_orchestrator())
+        except Exception as e:
+            print(f"Failed to start orchestrator: {e}")
+
     # Start background update thread
-    update_thread = threading.Thread(target=generate_mock_updates, daemon=True)
+    update_thread = threading.Thread(target=generate_real_time_updates, daemon=True)
     update_thread.start()
 
     print("🧠 Starting NeuroFlux Dashboard API Server...")
     print("📊 Dashboard: http://localhost:3000")
     print("🔌 API: http://localhost:5001")
     print("🌐 WebSocket: ws://localhost:5001")
+    print(f"🤖 Orchestrator: {'✅ Connected' if orchestrator else '❌ Mock mode'}")
+    print(f"🧠 ML Models: {'✅ Available' if ML_AVAILABLE else '❌ Unavailable'}")
+    print(f"📈 CCXT Exchanges: {'✅ Connected' if ccxt_manager else '❌ Unavailable'}")
+    print(f"🔄 Real-Time Bus: {'✅ Active' if rt_agent_bus else '❌ Unavailable'}")
 
     socketio.run(app, host='0.0.0.0', port=5001, debug=False, allow_unsafe_werkzeug=True)

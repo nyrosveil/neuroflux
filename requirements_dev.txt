@@ -1,0 +1,49 @@
+python-dotenv==1.0.0
+requests==2.31.0
+# pandas==2.1.4  # Commented out due to Python 3.14 compatibility
+numpy==1.26.2
+termcolor==2.4.0
+# backtesting==0.6.5  # Commented out due to dependencies
+ccxt==4.1.63
+# solana  # Commented out due to dependencies
+# solders==0.20.0  # Commented out due to dependencies
+web3==6.11.0
+# anthropic  # Commented out due to dependencies
+# openai  # Commented out due to dependencies
+# groq  # Commented out due to dependencies
+# google-generativeai==0.3.2  # Commented out due to dependencies
+# ollama  # Commented out due to dependencies
+ta==0.10.2
+scipy==1.11.4
+scikit-learn==1.3.2
+statsmodels==0.14.0
+# tensorflow==2.15.0  # Commented out due to size/complexity
+# torch==2.1.1  # Commented out due to size/complexity
+# transformers==4.36.2  # Commented out due to size/complexity
+
+# Web Framework & API
+flask==3.1.2
+flask-cors==6.0.1
+flask-socketio==5.5.1
+werkzeug==3.1.3
+itsdangerous==2.2.0
+jinja2==3.1.6
+markupsafe==3.0.3
+blinker==1.9.0
+
+# WebSocket & Async
+python-socketio==5.14.3
+python-engineio==4.12.3
+bidict==0.23.1
+simple-websocket==1.1.0
+wsproto==1.3.1
+h11==0.16.0
+
+# Production Server
+gunicorn==23.0.0
+packaging==25.0
+
+# Additional Utilities
+websockets==10.4
+psutil==6.0.0
+aiohttp==3.10.0

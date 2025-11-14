@@ -23,7 +23,8 @@ __all__ = [
     'websearch_agent',
     'rbi_agent',
     'backtest_runner',
-    'chat_agent'
+    'chat_agent',
+    'ml_prediction_agent'
 ]
 
 def __getattr__(name):

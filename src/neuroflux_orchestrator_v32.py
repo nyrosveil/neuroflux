@@ -48,9 +48,9 @@ class NeuroFluxOrchestratorV32:
     def __init__(self):
         # Core orchestration components
         self.communication_bus = CommunicationBus()
-        self.task_orchestrator = TaskOrchestrator(self.communication_bus)
-        self.conflict_resolution = ConflictResolutionEngine(self.communication_bus)
         self.agent_registry = AgentRegistry(self.communication_bus)
+        self.conflict_resolution = ConflictResolutionEngine(self.communication_bus, self.agent_registry)
+        self.task_orchestrator = TaskOrchestrator(self.communication_bus, self.agent_registry, self.conflict_resolution)
 
         # System state
         self.running = False
@@ -186,12 +186,18 @@ class NeuroFluxOrchestratorV32:
                 'metadata': {'priority': 'low', 'cycle_interval': 30},
                 'tags': ['trading', 'opportunities']
             },
-            {
-                'agent_type': 'swarm_intelligence',
-                'capabilities': ['RESEARCH', 'SENTIMENT_ANALYSIS'],
-                'metadata': {'priority': 'high', 'cycle_interval': 300},
-                'tags': ['consensus', 'swarm']
-            }
+             {
+                 'agent_type': 'swarm_intelligence',
+                 'capabilities': ['RESEARCH', 'SENTIMENT_ANALYSIS'],
+                 'metadata': {'priority': 'high', 'cycle_interval': 300},
+                 'tags': ['consensus', 'swarm']
+             },
+             {
+                 'agent_type': 'ml_prediction',
+                 'capabilities': ['ML_PREDICTION', 'TIME_SERIES_ANALYSIS'],
+                 'metadata': {'priority': 'high', 'cycle_interval': 180},
+                 'tags': ['ml', 'prediction', 'forecasting']
+             }
         ]
 
         # Register each agent
@@ -245,7 +251,48 @@ class NeuroFluxOrchestratorV32:
         )
         tasks.append(market_data_task)
 
-        # 3. Sentiment Analysis Task
+        # 2.5. ML Price Prediction Task (depends on market data)
+        ml_prediction_task = Task(
+            task_id=f"ml_price_prediction_{int(time.time())}",
+            name="ML Price Prediction",
+            description="Generate price predictions using machine learning models",
+            task_type="ml_prediction",
+            priority=TaskPriority.HIGH,
+            payload={
+                'tokens': ['BTC', 'ETH', 'SOL'],
+                'prediction_horizon': 60,  # 1 hour ahead
+                'models': ['arima', 'exponential_smoothing', 'simple_moving_average'],
+                'confidence_threshold': 0.7,
+                'include_confidence_intervals': True
+            },
+            dependencies=[market_data_task.task_id],
+            required_capabilities=['ML_PREDICTION', 'TIME_SERIES_ANALYSIS'],
+            estimated_duration=120,
+            timeout=300
+        )
+        tasks.append(ml_prediction_task)
+
+        # 2.6. ML Volume Prediction Task (depends on market data)
+        ml_volume_task = Task(
+            task_id=f"ml_volume_prediction_{int(time.time())}",
+            name="ML Volume Prediction",
+            description="Predict trading volume using ML models",
+            task_type="ml_prediction",
+            priority=TaskPriority.MEDIUM,
+            payload={
+                'tokens': ['BTC', 'ETH', 'SOL'],
+                'prediction_horizon': 30,  # 30 minutes ahead
+                'models': ['arima', 'exponential_smoothing'],
+                'volume_types': ['total_volume', 'buy_volume', 'sell_volume']
+            },
+            dependencies=[market_data_task.task_id],
+            required_capabilities=['ML_PREDICTION', 'TIME_SERIES_ANALYSIS'],
+            estimated_duration=90,
+            timeout=240
+        )
+        tasks.append(ml_volume_task)
+
+        # 4. Sentiment Analysis Task
         sentiment_task = Task(
             task_id=f"sentiment_analysis_{int(time.time())}",
             name="Sentiment Analysis",
@@ -263,7 +310,7 @@ class NeuroFluxOrchestratorV32:
         )
         tasks.append(sentiment_task)
 
-        # 4. Technical Analysis Task
+        # 5. Technical Analysis Task
         technical_task = Task(
             task_id=f"technical_analysis_{int(time.time())}",
             name="Technical Analysis",
@@ -281,7 +328,7 @@ class NeuroFluxOrchestratorV32:
         )
         tasks.append(technical_task)
 
-        # 5. Research Analysis Task (depends on market data)
+        # 8. Research Analysis Task (depends on market data)
         research_task = Task(
             task_id=f"research_analysis_{int(time.time())}",
             name="Research Analysis",
@@ -300,7 +347,7 @@ class NeuroFluxOrchestratorV32:
         )
         tasks.append(research_task)
 
-        # 6. Whale Tracking Task
+        # 9. Whale Tracking Task
         whale_task = Task(
             task_id=f"whale_tracking_{int(time.time())}",
             name="Whale Movement Tracking",
@@ -318,7 +365,7 @@ class NeuroFluxOrchestratorV32:
         )
         tasks.append(whale_task)
 
-        # 7. Funding Rate Analysis Task
+        # 11. Funding Rate Analysis Task
         funding_task = Task(
             task_id=f"funding_analysis_{int(time.time())}",
             name="Funding Rate Analysis",
@@ -335,7 +382,7 @@ class NeuroFluxOrchestratorV32:
         )
         tasks.append(funding_task)
 
-        # 8. Liquidation Monitoring Task
+        # 12. Liquidation Monitoring Task
         liquidation_task = Task(
             task_id=f"liquidation_monitoring_{int(time.time())}",
             name="Liquidation Risk Monitoring",
@@ -352,7 +399,7 @@ class NeuroFluxOrchestratorV32:
         )
         tasks.append(liquidation_task)
 
-        # 9. Swarm Intelligence Consensus Task (depends on sentiment and technical)
+        # 13. Swarm Intelligence Consensus Task (depends on sentiment and technical)
         swarm_task = Task(
             task_id=f"swarm_consensus_{int(time.time())}",
             name="Swarm Intelligence Consensus",
@@ -371,19 +418,22 @@ class NeuroFluxOrchestratorV32:
         )
         tasks.append(swarm_task)
 
-        # 10. Trading Decision Task (depends on risk, swarm consensus)
+        # 12. Trading Decision Task (depends on risk, swarm consensus, and ML predictions)
         trading_task = Task(
             task_id=f"trading_decision_{int(time.time())}",
             name="Trading Decision",
-            description="Make trading decisions based on all analysis",
+            description="Make trading decisions based on all analysis including ML predictions",
             task_type="trading_execution",
             priority=TaskPriority.HIGH,
             payload={
-                'decision_criteria': ['risk_approved', 'consensus_positive', 'opportunity_score'],
+                'decision_criteria': ['risk_approved', 'consensus_positive', 'ml_confidence_threshold', 'opportunity_score'],
+                'ml_confidence_threshold': 0.7,  # Minimum confidence for ML-based decisions
                 'max_positions': 5,
-                'risk_limits': {'max_position_size': 0.1, 'max_total_risk': 0.3}
+                'risk_limits': {'max_position_size': 0.1, 'max_total_risk': 0.3},
+                'ml_weight': 0.4,  # Weight given to ML predictions in decision making
+                'use_predictions_for_timing': True  # Use ML predictions for entry/exit timing
             },
-            dependencies=[risk_task.task_id, swarm_task.task_id],
+            dependencies=[risk_task.task_id, swarm_task.task_id, ml_prediction_task.task_id, ml_volume_task.task_id],
             required_capabilities=['TRADING', 'EXECUTION'],
             estimated_duration=60,
             timeout=120

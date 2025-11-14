@@ -1,0 +1,68 @@
+{
+  "summary": {
+    "total_tests": 7,
+    "passed": 6,
+    "failed": 1,
+    "warnings": 0,
+    "success_rate": 85.71428571428571,
+    "duration": 3.930028,
+    "system_health": "\ud83d\udfe1 GOOD"
+  },
+  "detailed_results": {
+    "system_setup": {
+      "imports": true,
+      "server": true
+    },
+    "core_components": {
+      "orchestrator": true,
+      "agent_count": 13,
+      "ml_agents": 1
+    },
+    "ml_integration": {
+      "ml_tasks_created": 2,
+      "task_dependencies": true
+    },
+    "api_endpoints": {
+      "/api/status": {
+        "status": "success",
+        "data_size": 656
+      },
+      "/api/dashboard/predictions": {
+        "status": "success",
+        "data_size": 3638
+      },
+      "/api/dashboard/agents": {
+        "status": "warning",
+        "code": 404
+      },
+      "/api/dashboard/performance": {
+        "status": "warning",
+        "code": 404
+      },
+      "/api/ml/models": {
+        "status": "warning",
+        "code": 503
+      },
+      "/api/ml/predict/arima?token=BTC": {
+        "status": "warning",
+        "code": 405
+      }
+    },
+    "realtime_features": {
+      "websocket": false,
+      "error": "server rejected WebSocket connection: HTTP 404"
+    },
+    "performance": {
+      "avg_response_time": 0.0029967308044433595,
+      "max_response_time": 0.005318880081176758,
+      "successful_requests": 5
+    },
+    "trading_cycle": {
+      "cycle_time": 2.6226043701171875e-05,
+      "tasks_created": 12,
+      "tasks_completed": 12,
+      "success": true
+    }
+  },
+  "timestamp": "2025-11-14T16:10:10.431030"
+}

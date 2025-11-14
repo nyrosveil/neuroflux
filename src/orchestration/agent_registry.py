@@ -52,6 +52,8 @@ class AgentCapability(Enum):
     STRATEGY_OPTIMIZATION = "strategy_optimization"
     BACKTESTING = "backtesting"
     EXECUTION = "execution"
+    ML_PREDICTION = "ml_prediction"
+    TIME_SERIES_ANALYSIS = "time_series_analysis"
 
 
 @dataclass
