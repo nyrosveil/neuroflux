@@ -54,6 +54,30 @@ class EventLoopManager:
 # Global event loop manager instance
 event_loop_manager = EventLoopManager()
 
+def get_ccxt_manager():
+    """Get or initialize CCXT manager on-demand"""
+    global ccxt_manager
+    if ccxt_manager is None and CCXT_AVAILABLE:
+        try:
+            # Create config dict for CCXT manager
+            ccxt_config = {
+                'binance_api_key': config.BINANCE_API_KEY,
+                'binance_secret': config.BINANCE_API_SECRET,
+                'coinbase_api_key': config.COINBASE_API_KEY,
+                'coinbase_secret': config.COINBASE_API_SECRET,
+                'bybit_api_key': config.BYBIT_API_KEY,
+                'bybit_secret': config.BYBIT_API_SECRET,
+                'kucoin_api_key': config.KUCOIN_API_KEY,
+                'kucoin_secret': config.KUCOIN_API_SECRET,
+            }
+
+            ccxt_manager = CCXTExchangeManager(ccxt_config)
+            print("✅ CCXT Exchange Manager initialized on-demand")
+        except Exception as e:
+            print(f"❌ Failed to initialize CCXT Manager: {e}")
+            ccxt_manager = None
+    return ccxt_manager
+
 # Import NeuroFlux orchestration components
 try:
     from src.neuroflux_orchestrator_v32 import NeuroFluxOrchestratorV32
@@ -161,6 +185,8 @@ orchestrator = None
 orchestrator_task = None
 ccxt_manager = None
 rt_agent_bus = None
+
+# CCXT Manager will be initialized on-demand in API endpoints
 
 # Mock data for development
 mock_data = {
@@ -478,13 +504,14 @@ def get_ml_status():
 @app.route('/api/exchanges/status')
 def get_exchange_status():
     """Get status of all connected exchanges"""
-    if not CCXT_AVAILABLE or not ccxt_manager:
+    ccxt_mgr = get_ccxt_manager()
+    if not CCXT_AVAILABLE or not ccxt_mgr:
         return jsonify({
             'available': False,
             'message': 'CCXT Exchange Manager not available'
         })
 
-    status = ccxt_manager.get_exchange_status()
+    status = ccxt_mgr.get_exchange_status()
     return jsonify({
         'available': True,
         'exchanges': status
@@ -493,13 +520,14 @@ def get_exchange_status():
 @app.route('/api/exchanges/ticker/<exchange>/<symbol>')
 def get_ticker(exchange, symbol):
     """Get real-time ticker data from an exchange"""
-    if not CCXT_AVAILABLE or not ccxt_manager:
+    ccxt_mgr = get_ccxt_manager()
+    if not CCXT_AVAILABLE or not ccxt_mgr:
         return jsonify({'error': 'CCXT Exchange Manager not available'}), 503
 
     try:
         # Use global event loop manager
         loop = event_loop_manager.get_loop()
-        ticker = loop.run_until_complete(ccxt_manager.get_ticker(exchange, symbol))
+        ticker = loop.run_until_complete(ccxt_mgr.get_ticker(exchange, symbol))
 
         if ticker:
             return jsonify(ticker)
@@ -511,7 +539,8 @@ def get_ticker(exchange, symbol):
 @app.route('/api/exchanges/orderbook/<exchange>/<symbol>')
 def get_orderbook(exchange, symbol):
     """Get order book data from an exchange"""
-    if not CCXT_AVAILABLE or not ccxt_manager:
+    ccxt_mgr = get_ccxt_manager()
+    if not CCXT_AVAILABLE or not ccxt_mgr:
         return jsonify({'error': 'CCXT Exchange Manager not available'}), 503
 
     try:
@@ -519,7 +548,7 @@ def get_orderbook(exchange, symbol):
 
         # Use global event loop manager
         loop = event_loop_manager.get_loop()
-        orderbook = loop.run_until_complete(ccxt_manager.get_orderbook(exchange, symbol, limit))
+        orderbook = loop.run_until_complete(ccxt_mgr.get_orderbook(exchange, symbol, limit))
 
         if orderbook:
             return jsonify(orderbook)
@@ -531,7 +560,8 @@ def get_orderbook(exchange, symbol):
 @app.route('/api/exchanges/subscribe/ticker', methods=['POST'])
 def subscribe_ticker():
     """Subscribe to real-time ticker updates"""
-    if not CCXT_AVAILABLE or not ccxt_manager:
+    ccxt_mgr = get_ccxt_manager()
+    if not CCXT_AVAILABLE or not ccxt_mgr:
         return jsonify({'error': 'CCXT Exchange Manager not available'}), 503
 
     data = request.get_json()
@@ -552,7 +582,8 @@ def subscribe_ticker():
 @app.route('/api/exchanges/subscribe/orderbook', methods=['POST'])
 def subscribe_orderbook():
     """Subscribe to real-time orderbook updates"""
-    if not CCXT_AVAILABLE or not ccxt_manager:
+    ccxt_mgr = get_ccxt_manager()
+    if not CCXT_AVAILABLE or not ccxt_mgr:
         return jsonify({'error': 'CCXT Exchange Manager not available'}), 503
 
     data = request.get_json()
@@ -575,7 +606,8 @@ def subscribe_orderbook():
 @app.route('/api/marketdata/multi-exchange/<symbol>')
 def get_multi_exchange_data(symbol):
     """Get market data from multiple exchanges for comparison"""
-    if not CCXT_AVAILABLE or not ccxt_manager:
+    ccxt_mgr = get_ccxt_manager()
+    if not CCXT_AVAILABLE or not ccxt_mgr:
         return jsonify({'error': 'CCXT Exchange Manager not available'}), 503
 
     exchanges = ['binance', 'coinbase', 'hyperliquid']  # Supported exchanges
@@ -586,7 +618,7 @@ def get_multi_exchange_data(symbol):
 
     for exchange in exchanges:
         try:
-            ticker = loop.run_until_complete(ccxt_manager.get_ticker(exchange, symbol))
+            ticker = loop.run_until_complete(ccxt_mgr.get_ticker(exchange, symbol))
             if ticker:
                 market_data[exchange] = {
                     'price': ticker.get('last'),
@@ -707,7 +739,8 @@ def send_risk_alert():
 @app.route('/api/arbitrage/opportunities/<symbol>')
 def get_arbitrage_opportunities(symbol):
     """Get arbitrage opportunities across exchanges"""
-    if not CCXT_AVAILABLE or not ccxt_manager:
+    ccxt_mgr = get_ccxt_manager()
+    if not CCXT_AVAILABLE or not ccxt_mgr:
         return jsonify({'error': 'CCXT Exchange Manager not available'}), 503
 
     exchanges = ['binance', 'coinbase', 'hyperliquid', 'bybit', 'kucoin']
@@ -718,7 +751,7 @@ def get_arbitrage_opportunities(symbol):
 
     for exchange in exchanges:
         try:
-            ticker = loop.run_until_complete(ccxt_manager.get_ticker(exchange, symbol))
+            ticker = loop.run_until_complete(ccxt_mgr.get_ticker(exchange, symbol))
             if ticker and ticker.get('last'):
                 prices[exchange] = ticker['last']
         except Exception as e:
@@ -818,7 +851,8 @@ def get_portfolio_risk():
 @app.route('/api/trading/routes/<symbol>')
 def get_trading_routes(symbol):
     """Get optimal trading routes across exchanges"""
-    if not CCXT_AVAILABLE or not ccxt_manager:
+    ccxt_mgr = get_ccxt_manager()
+    if not CCXT_AVAILABLE or not ccxt_mgr:
         return jsonify({'error': 'CCXT Exchange Manager not available'}), 503
 
     # Analyze liquidity and fees across exchanges
@@ -831,8 +865,8 @@ def get_trading_routes(symbol):
 
     for exchange in exchanges:
         try:
-            ticker = loop.run_until_complete(ccxt_manager.get_ticker(exchange, symbol))
-            orderbook = loop.run_until_complete(ccxt_manager.get_orderbook(exchange, symbol, limit=10))
+            ticker = loop.run_until_complete(ccxt_mgr.get_ticker(exchange, symbol))
+            orderbook = loop.run_until_complete(ccxt_mgr.get_orderbook(exchange, symbol, limit=10))
 
             if ticker and orderbook:
                 # Calculate liquidity metrics
@@ -870,7 +904,8 @@ def get_trading_routes(symbol):
 @app.route('/api/market/analysis/<symbol>')
 def get_market_analysis(symbol):
     """Get comprehensive market analysis"""
-    if not CCXT_AVAILABLE or not ccxt_manager:
+    ccxt_mgr = get_ccxt_manager()
+    if not CCXT_AVAILABLE or not ccxt_mgr:
         return jsonify({'error': 'CCXT Exchange Manager not available'}), 503
 
     analysis = {
@@ -893,7 +928,7 @@ def get_market_analysis(symbol):
 
     for exchange in exchanges:
         try:
-            ticker = loop.run_until_complete(ccxt_manager.get_ticker(exchange, symbol))
+            ticker = loop.run_until_complete(ccxt_mgr.get_ticker(exchange, symbol))
             if ticker:
                 price = ticker.get('last')
                 volume = ticker.get('quoteVolume', 0)
@@ -1164,7 +1199,8 @@ def generate_real_time_updates():
 
 def stream_market_data(symbol, last_data):
     """Stream real market data from exchanges"""
-    if not CCXT_AVAILABLE or not ccxt_manager:
+    ccxt_mgr = get_ccxt_manager()
+    if not CCXT_AVAILABLE or not ccxt_mgr:
         return None
 
     try:
@@ -1181,7 +1217,7 @@ def stream_market_data(symbol, last_data):
 
         for exchange in exchanges_to_check:
             try:
-                ticker = loop.run_until_complete(ccxt_manager.get_ticker(exchange, symbol))
+                ticker = loop.run_until_complete(ccxt_mgr.get_ticker(exchange, symbol))
                 if ticker:
                     market_data['exchanges'][exchange] = {
                         'price': ticker.get('last', ticker.get('close')),
@@ -1374,7 +1410,7 @@ if __name__ == '__main__':
     print("🌐 WebSocket: ws://localhost:5001")
     print(f"🤖 Orchestrator: {'✅ Connected' if orchestrator else '❌ Mock mode'}")
     print(f"🧠 ML Models: {'✅ Available' if ML_AVAILABLE else '❌ Unavailable'}")
-    print(f"📈 CCXT Exchanges: {'✅ Connected' if ccxt_manager else '❌ Unavailable'}")
+    print(f"📈 CCXT Exchanges: {'✅ Available' if CCXT_AVAILABLE else '❌ Unavailable'}")
     print(f"🔄 Real-Time Bus: {'✅ Active' if rt_agent_bus else '❌ Unavailable'}")
 
     socketio.run(app, host='0.0.0.0', port=5001, debug=False, allow_unsafe_werkzeug=True)
