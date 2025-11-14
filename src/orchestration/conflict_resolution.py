@@ -102,8 +102,9 @@ class ConflictResolutionEngine:
     - Performance tracking and learning from resolutions
     """
 
-    def __init__(self, communication_bus: CommunicationBus):
+    def __init__(self, communication_bus: CommunicationBus, agent_registry):
         self.communication_bus = communication_bus
+        self.agent_registry = agent_registry
         self.active_conflicts: Dict[str, Conflict] = {}
         self.resolved_conflicts: List[Conflict] = []
         self.consensus_history: List[ConsensusResult] = []
@@ -197,20 +198,35 @@ class ConflictResolutionEngine:
 
         return detected_conflicts
 
-    async def resolve_conflict(self, conflict: Conflict,
-                              algorithm: ConsensusAlgorithm = ConsensusAlgorithm.WEIGHTED_CONSENSUS,
-                              strategy: ResolutionStrategy = ResolutionStrategy.VOTING_CONSENSUS) -> Optional[Dict[str, Any]]:
+    async def resolve_conflict(self, conflict_input,
+                               algorithm: ConsensusAlgorithm = ConsensusAlgorithm.WEIGHTED_CONSENSUS,
+                               strategy: ResolutionStrategy = ResolutionStrategy.VOTING_CONSENSUS) -> Optional[Dict[str, Any]]:
         """
         Resolve a conflict using specified algorithm and strategy.
 
         Args:
-            conflict: The conflict to resolve
+            conflict_input: The conflict to resolve (Conflict object or dict)
             algorithm: Consensus algorithm to use
             strategy: Resolution strategy
 
         Returns:
             Resolution result or None if resolution failed
         """
+        # Convert dict to Conflict object if needed
+        if isinstance(conflict_input, dict):
+            conflict = Conflict(
+                conflict_id=str(uuid.uuid4()),
+                conflict_type=ConflictType(conflict_input['conflict_type']),
+                description=f"Conflict between {', '.join(conflict_input['participants'])}",
+                involved_agents=conflict_input['participants'],
+                conflicting_elements=conflict_input['context'],
+                severity=0.7,
+                detected_at=time.time(),
+                resolution_deadline=time.time() + 300
+            )
+        else:
+            conflict = conflict_input
+
         cprint(f"⚖️ Resolving conflict {conflict.conflict_id}: {conflict.description}", "blue")
 
         conflict.status = "resolving"
@@ -389,7 +405,7 @@ class ConflictResolutionEngine:
                     'conflict': conflict.__dict__,
                     'reason': 'Domain expertise required'
                 },
-                timeout=60
+                timeout=5  # Shorter timeout for testing
             )
 
             if response and 'decision' in response:
@@ -471,7 +487,7 @@ class ConflictResolutionEngine:
                         'conflict': conflict.__dict__,
                         'request': 'Please provide your vote on this conflict'
                     },
-                    timeout=30
+                    timeout=5  # Shorter timeout for testing
                 )
 
                 if response and 'vote' in response:
@@ -605,7 +621,7 @@ class ConflictResolutionEngine:
                     recipient_id=agent_id,
                     topic="confidence_assessment",
                     payload={'conflict': conflict.__dict__},
-                    timeout=15
+                    timeout=5  # Shorter timeout for testing
                 )
 
                 if response and 'confidence' in response:

@@ -1,0 +1,48 @@
+{
+  "timestamp": "2025-11-14T01:51:11.865189",
+  "system_health": {
+    "total_agents": 22,
+    "active_agents": 7,
+    "data_coverage": 0.3181818181818182,
+    "total_data_points": 93
+  },
+  "performance_summary": {},
+  "agent_status": {
+    "sentiment": {
+      "status": "active",
+      "score": 1.0,
+      "last_update": "2025-11-14T01:06:31.373812",
+      "data_quality": "unknown"
+    },
+    "swarm": {
+      "status": "stale",
+      "score": 0.5,
+      "last_update": "2025-11-13T15:38:07.283690",
+      "data_quality": "unknown"
+    },
+    "risk": {
+      "status": "active",
+      "score": 1.0,
+      "last_update": "2025-11-14T01:06:30.869811",
+      "data_quality": "unknown"
+    }
+  },
+  "market_analysis": {
+    "regime": {
+      "current_regime": "neutral_range",
+      "regime_confidence": 0.5,
+      "regime_indicators": {
+        "sentiment_score": 0.0,
+        "risk_level": 0.5,
+        "flux_level": 0.5,
+        "timestamp": "2025-11-14T01:51:11.870079"
+      },
+      "regime_history": []
+    }
+  },
+  "recommendations": [
+    "Investigate health issues with agents: sentiment, swarm, risk",
+    "Low risk-adjusted returns - review strategy performance",
+    "Low agent data coverage - ensure all agents are functioning"
+  ]
+}

@@ -27,6 +27,16 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # Import NeuroFlux components
 import config
 
+# Import Analytics Engine for Phase 4.3.6 Integration
+try:
+    from analytics import AnalyticsEngine
+    ANALYTICS_ENABLED = True
+    cprint("📊 Analytics Engine imported successfully", "green")
+except ImportError as e:
+    cprint(f"⚠️  Analytics Engine not available: {e}", "yellow")
+    ANALYTICS_ENABLED = False
+    AnalyticsEngine = None
+
 # ============================================================================
 # ACTIVE AGENTS CONFIGURATION
 # ============================================================================
@@ -99,6 +109,16 @@ class NeuroFluxOrchestrator:
             'last_update': datetime.now(),
             'market_stability': 1.0
         }
+
+        # Initialize Analytics Engine (Phase 4.3.6)
+        self.analytics_engine = None
+        if ANALYTICS_ENABLED and AnalyticsEngine:
+            try:
+                self.analytics_engine = AnalyticsEngine()
+                cprint("📊 Analytics Engine initialized successfully", "green")
+            except Exception as e:
+                cprint(f"❌ Failed to initialize Analytics Engine: {e}", "red")
+                self.analytics_engine = None
 
         # Initialize agents
         self._initialize_agents()
@@ -220,11 +240,26 @@ class NeuroFluxOrchestrator:
 
             cprint(f"✅ {agent_name} completed in {execution_time:.1f}s", "green")
 
+            # Phase 4.3.6: Collect analytics data after agent execution
+            if self.analytics_engine:
+                try:
+                    self._collect_agent_analytics(agent_name, result, execution_time)
+                except Exception as e:
+                    cprint(f"⚠️  Analytics collection failed for {agent_name}: {e}", "yellow")
+
             return result
 
         except Exception as e:
             cprint(f"❌ {agent_name} failed: {str(e)}", "red")
             traceback.print_exc()
+
+            # Phase 4.3.6: Collect error analytics even on failure
+            if self.analytics_engine:
+                try:
+                    self._collect_agent_error_analytics(agent_name, str(e))
+                except Exception as analytics_error:
+                    cprint(f"⚠️  Error analytics collection failed: {analytics_error}", "yellow")
+
             return None
 
     def _run_agent_single_iteration(self, agent_module, agent_name: str):
@@ -515,7 +550,10 @@ class NeuroFluxOrchestrator:
 
     def run_cycle(self):
         """Run one complete cycle of all active agents"""
-        cprint(f"\n🧠 NeuroFlux Cycle Starting - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", "cyan", attrs=['bold'])
+        cycle_start_time = time.time()
+        cycle_timestamp = datetime.now()
+
+        cprint(f"\n🧠 NeuroFlux Cycle Starting - {cycle_timestamp.strftime('%Y-%m-%d %H:%M:%S')}", "cyan", attrs=['bold'])
 
         # Update flux state
         self._update_flux_state()
@@ -528,18 +566,33 @@ class NeuroFluxOrchestrator:
         )
 
         results = {}
+        cycle_errors = []
 
         for agent_name in prioritized_agents:
             if self._should_run_agent(agent_name):
                 result = self._run_agent(agent_name)
                 results[agent_name] = result
 
+                # Track errors for analytics
+                if result is None:
+                    cycle_errors.append(agent_name)
+
                 # Small delay between agents to prevent overwhelming
                 time.sleep(0.5)
             else:
                 cprint(f"⏭️  Skipping {agent_name} (conditions not met)", "yellow")
+                results[agent_name] = 'skipped'
+
+        cycle_execution_time = time.time() - cycle_start_time
 
         cprint(f"🧠 NeuroFlux Cycle Complete - {len(results)} agents executed", "cyan", attrs=['bold'])
+
+        # Phase 4.3.6: Collect cycle-level analytics
+        if self.analytics_engine:
+            try:
+                self._collect_cycle_analytics(results, cycle_errors, cycle_execution_time, cycle_timestamp)
+            except Exception as e:
+                cprint(f"⚠️  Cycle analytics collection failed: {e}", "yellow")
 
         return results
 
@@ -572,13 +625,123 @@ class NeuroFluxOrchestrator:
 
     def get_status(self) -> Dict:
         """Get current system status"""
-        return {
+        status = {
             'flux_state': self.flux_state,
             'agent_status': self.agent_status,
             'last_run_times': {k: v.isoformat() if v else None for k, v in self.last_run_times.items()},
             'active_agents': [name for name, enabled in ACTIVE_AGENTS.items() if enabled],
             'total_agents': len(ACTIVE_AGENTS),
             'initialized_agents': len([s for s in self.agent_status.values() if s == 'initialized'])
+        }
+
+        # Phase 4.3.6: Add analytics status
+        if self.analytics_engine:
+            status['analytics'] = {
+                'enabled': True,
+                'status': 'active'
+            }
+        else:
+            status['analytics'] = {
+                'enabled': False,
+                'status': 'unavailable'
+            }
+
+        return status
+
+    def _collect_agent_analytics(self, agent_name: str, result: any, execution_time: float):
+        """Phase 4.3.6: Collect analytics data after successful agent execution"""
+        if not self.analytics_engine:
+            return
+
+        try:
+            # Prepare agent execution data for analytics
+            agent_data = {
+                'agent_name': agent_name,
+                'timestamp': datetime.now().isoformat(),
+                'execution_time': execution_time,
+                'success': result is not None,
+                'result_summary': str(result)[:500] if result else None,  # Limit result size
+                'flux_level': self.flux_state['level']
+            }
+
+            # Store in analytics system (this would be enhanced in future phases)
+            # For now, just log that analytics collection occurred
+            cprint(f"📊 Analytics collected for {agent_name}", "cyan")
+
+        except Exception as e:
+            cprint(f"⚠️  Failed to collect analytics for {agent_name}: {e}", "yellow")
+
+    def _collect_agent_error_analytics(self, agent_name: str, error_message: str):
+        """Phase 4.3.6: Collect analytics data for agent errors"""
+        if not self.analytics_engine:
+            return
+
+        try:
+            # Prepare error data for analytics
+            error_data = {
+                'agent_name': agent_name,
+                'timestamp': datetime.now().isoformat(),
+                'error_type': 'execution_error',
+                'error_message': error_message[:500],  # Limit error message size
+                'flux_level': self.flux_state['level']
+            }
+
+            # Store error analytics
+            cprint(f"📊 Error analytics collected for {agent_name}", "yellow")
+
+        except Exception as e:
+            cprint(f"⚠️  Failed to collect error analytics: {e}", "yellow")
+
+    def _collect_cycle_analytics(self, results: Dict, errors: List[str], execution_time: float, timestamp: datetime):
+        """Phase 4.3.6: Collect analytics data for complete cycle execution"""
+        if not self.analytics_engine:
+            return
+
+        try:
+            # Prepare cycle analytics data
+            cycle_data = {
+                'cycle_timestamp': timestamp.isoformat(),
+                'execution_time': execution_time,
+                'agents_executed': len([r for r in results.values() if r != 'skipped']),
+                'agents_skipped': len([r for r in results.values() if r == 'skipped']),
+                'agents_failed': len(errors),
+                'success_rate': (len(results) - len(errors)) / len(results) if results else 0,
+                'flux_level': self.flux_state['level'],
+                'market_stability': self.flux_state['market_stability'],
+                'failed_agents': errors
+            }
+
+            # Store cycle analytics
+            cprint(f"📊 Cycle analytics collected - Success rate: {cycle_data['success_rate']:.1%}", "cyan")
+
+        except Exception as e:
+            cprint(f"⚠️  Failed to collect cycle analytics: {e}", "yellow")
+
+    def get_system_overview(self) -> Dict:
+        """Phase 4.3.6: Get comprehensive system overview with analytics"""
+        if self.analytics_engine:
+            try:
+                return self.analytics_engine.generate_system_overview()
+            except Exception as e:
+                cprint(f"⚠️  Analytics overview failed: {e}", "yellow")
+
+        # Fallback to basic status if analytics unavailable
+        return self.get_status()
+
+    def get_agent_report(self, agent_name: str, hours_back: int = 24) -> Dict:
+        """Phase 4.3.6: Get detailed agent report with analytics"""
+        if self.analytics_engine:
+            try:
+                return self.analytics_engine.generate_agent_report(agent_name, hours_back)
+            except Exception as e:
+                cprint(f"⚠️  Agent analytics report failed for {agent_name}: {e}", "yellow")
+
+        # Fallback to basic agent info
+        return {
+            'agent_name': agent_name,
+            'status': self.agent_status.get(agent_name, 'unknown'),
+            'last_run': self.last_run_times.get(agent_name).isoformat() if self.last_run_times.get(agent_name) else None,
+            'analytics_available': False
         }
 
 

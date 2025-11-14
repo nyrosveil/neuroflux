@@ -167,8 +167,10 @@ class TaskOrchestrator:
     - Real-time monitoring and analytics
     """
 
-    def __init__(self, communication_bus: CommunicationBus):
+    def __init__(self, communication_bus: CommunicationBus, agent_registry, conflict_engine):
         self.communication_bus = communication_bus
+        self.agent_registry = agent_registry
+        self.conflict_engine = conflict_engine
         self.tasks: Dict[str, Task] = {}
         self.agent_capabilities: Dict[str, AgentCapability] = {}
         self.completed_tasks: set = set()
@@ -234,30 +236,37 @@ class TaskOrchestrator:
 
             cprint(f"📝 Agent {agent_id} unregistered from orchestrator", "blue")
 
-    async def submit_task(self, name: str, description: str, task_type: str,
-                         payload: Dict[str, Any], priority: TaskPriority = TaskPriority.MEDIUM,
-                         dependencies: Optional[List[str]] = None, required_capabilities: Optional[List[str]] = None,
-                         estimated_duration: int = 300, timeout: int = 600) -> str:
+    async def submit_task(self, task_or_name, description=None, task_type=None,
+                         payload=None, priority=TaskPriority.MEDIUM,
+                         dependencies=None, required_capabilities=None,
+                         estimated_duration=300, timeout=600) -> str:
         """Submit a new task for execution."""
-        task_id = str(uuid.uuid4())
-        task = Task(
-            task_id=task_id,
-            name=name,
-            description=description,
-            task_type=task_type,
-            priority=priority,
-            payload=payload,
-            dependencies=dependencies or [],
-            required_capabilities=required_capabilities or [],
-            estimated_duration=estimated_duration,
-            timeout=timeout
-        )
+
+        # Check if first argument is a Task object
+        if isinstance(task_or_name, Task):
+            task = task_or_name
+            task_id = task.task_id
+        else:
+            # Create new task from parameters
+            task_id = str(uuid.uuid4())
+            task = Task(
+                task_id=task_id,
+                name=str(task_or_name),
+                description=str(description) if description else "",
+                task_type=str(task_type) if task_type else "",
+                priority=priority,
+                payload=payload or {},
+                dependencies=dependencies or [],
+                required_capabilities=required_capabilities or [],
+                estimated_duration=estimated_duration,
+                timeout=timeout
+            )
 
         async with self.lock:
             self.tasks[task_id] = task
             self.stats['tasks_created'] += 1
 
-        cprint(f"📋 Task {task_id} submitted: {name}", "blue")
+        cprint(f"📋 Task {task_id} submitted: {task.name}", "blue")
         return task_id
 
     async def cancel_task(self, task_id: str) -> bool:
