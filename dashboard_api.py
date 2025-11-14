@@ -11,7 +11,7 @@ from flask_socketio import SocketIO, emit
 import json
 import time
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 import threading
 import os
 import numpy as np
@@ -47,6 +47,30 @@ mock_data = {
     'total_agents': 12,
     'analytics': {
         'enabled': True
+    },
+    'predictions': {
+        'price_forecast': {
+            'model': 'ARIMA',
+            'next_hour': 45230.50,
+            'confidence': 0.78,
+            'trend': 'bullish',
+            'last_update': datetime.now().isoformat()
+        },
+        'volatility_forecast': {
+            'model': 'GARCH',
+            'next_hour': 0.023,
+            'confidence': 0.65,
+            'risk_level': 'moderate',
+            'last_update': datetime.now().isoformat()
+        },
+        'market_sentiment': {
+            'model': 'LSTM',
+            'current': 0.72,
+            'prediction': 0.68,
+            'confidence': 0.82,
+            'trend': 'neutral',
+            'last_update': datetime.now().isoformat()
+        }
     }
 }
 
@@ -241,6 +265,65 @@ def get_ml_status():
         'features': ['prediction', 'training', 'confidence_scores']
     })
 
+@app.route('/api/dashboard/predictions')
+def get_prediction_dashboard():
+    """Get prediction data for dashboard charts"""
+    # Generate mock prediction chart data
+    timestamps = []
+    prices = []
+    predictions = []
+    confidence_upper = []
+    confidence_lower = []
+
+    base_time = datetime.now()
+    base_price = 45000
+
+    for i in range(24):  # 24 hours of data
+        timestamp = (base_time + timedelta(hours=i)).isoformat()
+        timestamps.append(timestamp)
+
+        # Generate realistic price data with trend
+        trend = 0.001 * i  # Slight upward trend
+        noise = random.uniform(-0.02, 0.02)
+        price = base_price * (1 + trend + noise)
+        prices.append(round(price, 2))
+
+        # Generate predictions with confidence intervals
+        pred_noise = random.uniform(-0.015, 0.015)
+        prediction = price * (1 + pred_noise)
+        predictions.append(round(prediction, 2))
+
+        # Confidence intervals
+        conf_width = price * 0.05  # 5% confidence interval
+        confidence_upper.append(round(prediction + conf_width, 2))
+        confidence_lower.append(round(prediction - conf_width, 2))
+
+    return jsonify({
+        'price_chart': {
+            'timestamps': timestamps,
+            'actual_prices': prices,
+            'predictions': predictions,
+            'confidence_upper': confidence_upper,
+            'confidence_lower': confidence_lower
+        },
+        'volatility_chart': {
+            'timestamps': timestamps[-12:],  # Last 12 hours
+            'volatility': [round(random.uniform(0.01, 0.08), 4) for _ in range(12)],
+            'predicted_volatility': [round(random.uniform(0.01, 0.08), 4) for _ in range(12)]
+        },
+        'sentiment_chart': {
+            'timestamps': timestamps[-24:],  # Last 24 hours
+            'sentiment': [round(random.uniform(0.2, 0.8), 2) for _ in range(24)],
+            'predicted_sentiment': [round(random.uniform(0.2, 0.8), 2) for _ in range(24)]
+        },
+        'model_performance': {
+            'arima_accuracy': round(random.uniform(0.65, 0.85), 2),
+            'lstm_accuracy': round(random.uniform(0.70, 0.90), 2),
+            'ensemble_accuracy': round(random.uniform(0.75, 0.95), 2)
+        },
+        'last_update': datetime.now().isoformat()
+    })
+
 def generate_mock_updates():
     """Generate mock real-time updates"""
     while True:
@@ -257,6 +340,36 @@ def generate_mock_updates():
                 agent['execution_time'] = round(random.uniform(0.5, 3.0), 1)
                 agent['success'] = random.random() > 0.2  # 80% success rate
 
+        # Update predictions
+        if random.random() < 0.6:  # 60% chance of prediction update
+            # Update price forecast
+            price_change = random.uniform(-500, 500)
+            mock_data['predictions']['price_forecast']['next_hour'] += price_change
+            mock_data['predictions']['price_forecast']['confidence'] = max(0.1, min(0.95,
+                mock_data['predictions']['price_forecast']['confidence'] + random.uniform(-0.1, 0.1)))
+            mock_data['predictions']['price_forecast']['trend'] = random.choice(['bullish', 'bearish', 'neutral'])
+            mock_data['predictions']['price_forecast']['last_update'] = datetime.now().isoformat()
+
+            # Update volatility forecast
+            mock_data['predictions']['volatility_forecast']['next_hour'] = max(0.005, min(0.1,
+                mock_data['predictions']['volatility_forecast']['next_hour'] + random.uniform(-0.01, 0.01)))
+            mock_data['predictions']['volatility_forecast']['confidence'] = max(0.1, min(0.95,
+                mock_data['predictions']['volatility_forecast']['confidence'] + random.uniform(-0.1, 0.1)))
+            risk_levels = ['low', 'moderate', 'high', 'extreme']
+            mock_data['predictions']['volatility_forecast']['risk_level'] = random.choice(risk_levels)
+            mock_data['predictions']['volatility_forecast']['last_update'] = datetime.now().isoformat()
+
+            # Update sentiment
+            sentiment_change = random.uniform(-0.2, 0.2)
+            mock_data['predictions']['market_sentiment']['prediction'] = max(0.0, min(1.0,
+                mock_data['predictions']['market_sentiment']['prediction'] + sentiment_change))
+            mock_data['predictions']['market_sentiment']['current'] = max(0.0, min(1.0,
+                mock_data['predictions']['market_sentiment']['current'] + random.uniform(-0.1, 0.1)))
+            mock_data['predictions']['market_sentiment']['confidence'] = max(0.1, min(0.95,
+                mock_data['predictions']['market_sentiment']['confidence'] + random.uniform(-0.1, 0.1)))
+            mock_data['predictions']['market_sentiment']['trend'] = random.choice(['bullish', 'bearish', 'neutral'])
+            mock_data['predictions']['market_sentiment']['last_update'] = datetime.now().isoformat()
+
         # Emit socket updates
         socketio.emit('system_update', mock_data)
 
@@ -266,13 +379,27 @@ def generate_mock_updates():
             agent_update['timestamp'] = datetime.now().isoformat()
             socketio.emit('agent_update', agent_update)
 
+        # Random prediction updates
+        if random.random() < 0.3:
+            prediction_update = {
+                'type': 'prediction_update',
+                'model': random.choice(['ARIMA', 'LSTM', 'GARCH']),
+                'metric': random.choice(['price', 'volatility', 'sentiment']),
+                'value': round(random.uniform(0.1, 0.9), 3),
+                'confidence': round(random.uniform(0.5, 0.95), 2),
+                'timestamp': datetime.now().isoformat()
+            }
+            socketio.emit('prediction_update', prediction_update)
+
         # Random notifications
         if random.random() < 0.2:
             notifications = [
                 {'type': 'INFO', 'message': 'Agent cycle completed', 'agent': 'System'},
                 {'type': 'SUCCESS', 'message': 'Trade executed successfully', 'agent': 'TradingAgent'},
                 {'type': 'WARNING', 'message': 'High volatility detected', 'agent': 'RiskAgent'},
-                {'type': 'ERROR', 'message': 'API rate limit reached', 'agent': 'ResearchAgent'}
+                {'type': 'ERROR', 'message': 'API rate limit reached', 'agent': 'ResearchAgent'},
+                {'type': 'PREDICTION', 'message': 'New price prediction available', 'agent': 'MLPredictor'},
+                {'type': 'ALERT', 'message': 'High confidence signal detected', 'agent': 'MLPredictor'}
             ]
             notification = random.choice(notifications)
             notification['timestamp'] = datetime.now().isoformat()
