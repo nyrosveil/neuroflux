@@ -27,13 +27,8 @@ from datetime import datetime
 from termcolor import cprint
 import ccxt.async_support as ccxt
 
-# Try to import HyperLiquid from hyperliquid.ccxt if available
-try:
-    from hyperliquid.ccxt import hyperliquid
-    ccxt.hyperliquid = hyperliquid
-    HYPERLIQUID_CCXT_AVAILABLE = True
-except ImportError:
-    HYPERLIQUID_CCXT_AVAILABLE = False
+# HyperLiquid support (disabled for now due to compatibility issues)
+HYPERLIQUID_CCXT_AVAILABLE = False
 import websockets
 import aiohttp
 
@@ -121,8 +116,17 @@ class CCXTExchangeManager:
 
         for exchange_name, exchange_config in self.SUPPORTED_EXCHANGES.items():
             try:
-                # Create CCXT exchange instance
-                exchange_class = getattr(ccxt, exchange_name)
+                # Skip hyperliquid for now due to compatibility issues
+                if exchange_name == 'hyperliquid':
+                    cprint(f"⚠️  HyperLiquid temporarily disabled due to CCXT compatibility issues", "yellow")
+                    continue
+
+                # Standard CCXT exchange
+                exchange_class = getattr(ccxt, exchange_name, None)
+                if exchange_class is None:
+                    cprint(f"⚠️  {exchange_name} not available in CCXT, skipping", "yellow")
+                    continue
+
                 exchange = exchange_class({
                     'apiKey': self.config.get(f'{exchange_name}_api_key'),
                     'secret': self.config.get(f'{exchange_name}_secret'),

@@ -9,6 +9,9 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
+# Import configuration (handles environment loading automatically)
+from config import config
+
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
@@ -64,10 +67,64 @@ except ImportError:
 
 # Configure Flask to serve React build files
 app = Flask(__name__,
-            static_folder='../dashboard/build',
+            static_folder='dashboard/build',
             static_url_path='/')
-CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+
+# Load configuration from config module
+app.config.update(
+    SECRET_KEY=config.SECRET_KEY,
+    DEBUG=config.DEBUG,
+    TESTING=config.TESTING,
+    ENV=config.ENV,
+    HOST=config.HOST,
+    PORT=config.PORT,
+    SESSION_TIMEOUT=config.SESSION_TIMEOUT,
+    MAX_CONTENT_LENGTH=config.MAX_CONTENT_LENGTH,
+)
+
+# CORS configuration
+CORS(app, origins=config.CORS_ORIGINS)
+socketio = SocketIO(app, cors_allowed_origins=config.CORS_ORIGINS, async_mode='threading')
+
+# Configure logging
+import logging
+from logging.handlers import RotatingFileHandler
+
+# Configure root logger
+logging.basicConfig(
+    level=getattr(logging, config.LOG_LEVEL.upper()),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Add file handler if log file is specified
+if config.LOG_FILE:
+    try:
+        os.makedirs(os.path.dirname(config.LOG_FILE), exist_ok=True)
+        file_handler = RotatingFileHandler(
+            config.LOG_FILE,
+            maxBytes=config.LOG_MAX_SIZE,
+            backupCount=config.LOG_BACKUP_COUNT
+        )
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        ))
+        logging.getLogger().addHandler(file_handler)
+        print(f"📝 Logging to file: {config.LOG_FILE}")
+    except (OSError, PermissionError) as e:
+        print(f"⚠️  Could not set up file logging: {e}")
+        print("📝 Using console logging only")
+
+# Reduce noise from other libraries
+logging.getLogger('werkzeug').setLevel(logging.WARNING)
+logging.getLogger('socketio').setLevel(logging.WARNING)
+logging.getLogger('engineio').setLevel(logging.WARNING)
+
+# Log configuration info
+print(f"🧠 NeuroFlux {config.ENV} server starting...")
+print(f"📍 Host: {config.HOST}:{config.PORT}")
+print(f"🐍 Python: {sys.version.split()[0]}")
+print(f"📦 Conda: {config.CONDA_ENV_NAME or 'None'}")
+print(f"🏠 Venv: {config.VENV_PATH or 'None'}")
 
 # Global instances
 orchestrator = None

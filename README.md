@@ -27,25 +27,26 @@ NeuroFlux is an advanced AI trading system that combines neuro-inspired algorith
 
 ### Prerequisites
 - Python 3.11+ (tested with 3.11)
-- Conda (recommended) or venv
+- Conda (recommended for optimal performance) or venv
 - Node.js & npm (for building React dashboard)
+- Bash or Zsh shell (environment management scripts)
 
 ### Installation
 
-#### Single-Command Deployment (Recommended) 🚀
+#### Hybrid Environment Deployment (Recommended) 🚀
 ```bash
 # Clone repository
 git clone https://github.com/yourusername/neuroflux.git
 cd neuroflux
 
-# Create conda environment
-conda create -n neuroflux-env python=3.11 -y
-
 # Run everything with one command!
-./start.sh
+# Automatically handles conda + venv setup
+bash start_hybrid.sh
 ```
 
 **That's it!** Your NeuroFlux dashboard will be available at `http://localhost:5001`
+
+*NeuroFlux uses a hybrid conda + venv approach for optimal performance and compatibility.*
 
 #### Manual Installation
 ```bash
@@ -302,6 +303,179 @@ We welcome contributions! Please:
 - Past performance does not indicate future results
 - Always backtest strategies before live trading
 - Use at your own risk
+
+## 🔧 Troubleshooting
+
+### Conda Initialization Issues
+
+If you see `CondaError: Run 'conda init' before 'conda activate'`:
+
+**Automatic fix:**
+```bash
+# Run diagnostics
+bash env_manager.sh doctor
+
+# Reset environment state
+bash env_manager.sh cleanup
+
+# Try again
+bash start_hybrid.sh
+```
+
+**Manual fix:**
+```bash
+# Initialize conda
+conda init bash
+source ~/.bashrc
+
+# Then run the hybrid script
+bash start_hybrid.sh
+```
+
+**Force venv-only mode:**
+```bash
+# If conda issues persist
+export FORCE_VENV_ONLY=true
+bash start_hybrid.sh
+```
+
+### Zsh Shell Support
+
+NeuroFlux supports both Bash and Zsh shells with automatic detection and initialization.
+
+**For Zsh users:**
+```zsh
+# Automatic setup (recommended)
+bash start_hybrid.sh
+
+# Manual conda initialization if needed
+conda init zsh
+source ~/.zshrc
+bash start_hybrid.sh
+```
+
+**Zsh-specific issues:**
+- If you see conda initialization errors, run `conda init zsh` first
+- Use `bash start_hybrid.sh` instead of `./start_hybrid.sh` for Zsh
+- The system automatically detects Zsh and uses appropriate initialization
+
+### Environment Issues
+
+**Check environment status:**
+```bash
+bash env_manager.sh info
+```
+
+**Run comprehensive diagnostics:**
+```bash
+bash env_manager.sh doctor
+```
+
+**Reset everything:**
+```bash
+bash env_manager.sh cleanup
+```
+
+### Common Issues
+
+#### Port 5001 Already in Use
+```bash
+# Find what's using the port
+lsof -i :5001
+
+# Kill the process
+kill -9 <PID>
+
+# Or use a different port
+export PORT=5002
+bash start_hybrid.sh
+```
+
+#### React Dashboard Not Building
+```bash
+# Check if npm is installed
+npm --version
+
+# Install dependencies manually
+cd dashboard
+npm install
+npm run build
+cd ..
+```
+
+#### Python Import Errors
+```bash
+# Reinstall dependencies
+bash env_manager.sh activate
+pip install -r requirements.txt
+```
+
+#### Conda Environment Issues
+```bash
+# Remove and recreate conda environment
+bash env_manager.sh cleanup
+conda create -n neuroflux-base python=3.11 -y
+bash start_hybrid.sh
+```
+
+### Testing Your Setup
+
+**Run comprehensive tests:**
+```bash
+bash test_hybrid.sh
+```
+
+**Test individual components:**
+```bash
+# Test environment
+bash env_manager.sh doctor
+
+# Test configuration
+python -c "from config import config; print('Config OK')"
+
+# Test dashboard
+python -c "import dashboard_api; print('Dashboard OK')"
+```
+
+### Performance Issues
+
+**High memory usage:**
+```bash
+# Check memory usage
+ps aux --sort=-%mem | head
+
+# Restart with lower settings
+export GUNICORN_WORKERS=2
+bash start_hybrid.sh
+```
+
+**Slow startup:**
+```bash
+# Use development mode
+export FLASK_ENV=development
+bash run_dev.sh
+```
+
+### Getting Help
+
+1. **Run diagnostics first:**
+   ```bash
+   bash env_manager.sh doctor
+   ```
+
+2. **Check logs:**
+   ```bash
+   tail -f neuroflux.log
+   ```
+
+3. **Test step by step:**
+   ```bash
+   bash env_manager.sh activate
+   python -c "import flask; print('Flask OK')"
+   python -c "import dashboard_api; print('Dashboard OK')"
+   ```
+
+4. **Report issues** with full diagnostic output
 
 ## 📞 Support
 

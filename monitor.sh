@@ -1,188 +1,216 @@
 #!/bin/bash
-# NeuroFlux Monitoring Script
-# This script provides real-time monitoring of the NeuroFlux system
+# NeuroFlux Process Monitor
+# Simple process management for hybrid deployment
 
-# Configuration
-API_URL="http://localhost:5001"
-SERVICE_NAME="neuroflux"
-LOG_FILE="/var/log/neuroflux/monitor.log"
-INTERVAL=${1:-60}  # Default monitoring interval in seconds
+set -e
 
 # Colors
-RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 # Functions
-log() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
+log_info() { echo -e "${BLUE}[MONITOR]${NC} $1"; }
+log_success() { echo -e "${GREEN}[MONITOR]${NC} $1"; }
+log_warning() { echo -e "${YELLOW}[MONITOR]${NC} $1"; }
+log_error() { echo -e "${RED}[MONITOR]${NC} $1"; }
+
+# Check if NeuroFlux process is running
+check_process() {
+    if pgrep -f "python dashboard_api.py" > /dev/null 2>&1; then
+        return 0  # Running
+    else
+        return 1  # Not running
+    fi
 }
 
-print_status() {
-    echo -e "$(date '+%H:%M:%S') - $1"
+# Get process information
+get_process_info() {
+    local pid=$(pgrep -f "python dashboard_api.py" 2>/dev/null || echo "")
+    if [ -n "$pid" ]; then
+        echo "PID: $pid"
+        echo "Command: $(ps -p $pid -o cmd= 2>/dev/null || echo 'N/A')"
+        echo "CPU: $(ps -p $pid -o pcpu= 2>/dev/null || echo 'N/A')%"
+        echo "Memory: $(ps -p $pid -o pmem= 2>/dev/null || echo 'N/A')%"
+        echo "Started: $(ps -p $pid -o lstart= 2>/dev/null || echo 'N/A')"
+    else
+        echo "No NeuroFlux process found"
+    fi
 }
 
-get_system_metrics() {
-    # CPU usage
-    CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}')
+# Start NeuroFlux process
+start_process() {
+    log_info "Starting NeuroFlux..."
 
-    # Memory usage
-    MEM_TOTAL=$(free -m | grep '^Mem:' | awk '{print $2}')
-    MEM_USED=$(free -m | grep '^Mem:' | awk '{print $3}')
-    MEM_USAGE=$(( MEM_USED * 100 / MEM_TOTAL ))
+    if check_process; then
+        log_warning "NeuroFlux is already running"
+        return 1
+    fi
 
-    # Disk usage
-    DISK_USAGE=$(df / | tail -1 | awk '{print $5}' | sed 's/%//')
+    # Check if we're in the right directory
+    if [ ! -f "dashboard_api.py" ]; then
+        log_error "dashboard_api.py not found. Please run from NeuroFlux root directory."
+        return 1
+    fi
 
-    # Network connections
-    NET_CONNECTIONS=$(netstat -tun | grep ESTABLISHED | wc -l)
+    # Start in background
+    nohup bash start_hybrid.sh > neuroflux.log 2>&1 &
+    local pid=$!
 
-    echo "$CPU_USAGE:$MEM_USAGE:$DISK_USAGE:$NET_CONNECTIONS"
+    # Wait for startup
+    log_info "Waiting for NeuroFlux to start (PID: $pid)..."
+    local count=0
+    while [ $count -lt 30 ]; do
+        if check_process; then
+            log_success "NeuroFlux started successfully"
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+    done
+
+    log_error "NeuroFlux failed to start within 30 seconds"
+    return 1
 }
 
-get_neuroflux_metrics() {
-    # Get API status
-    if curl -f -s --max-time 5 "$API_URL/api/status" > /dev/null 2>&1; then
-        API_STATUS="UP"
+# Stop NeuroFlux process
+stop_process() {
+    log_info "Stopping NeuroFlux..."
 
-        # Get detailed metrics
-        STATUS_JSON=$(curl -s "$API_URL/api/status" 2>/dev/null)
-        if echo "$STATUS_JSON" | jq -e '.initialized_agents' > /dev/null 2>&1; then
-            AGENTS=$(echo "$STATUS_JSON" | jq -r '.initialized_agents')
-            TOTAL_AGENTS=$(echo "$STATUS_JSON" | jq -r '.total_agents // 12')
+    if ! check_process; then
+        log_warning "NeuroFlux is not running"
+        return 0
+    fi
+
+    # Try graceful shutdown first
+    pkill -TERM -f "python dashboard_api.py" 2>/dev/null || true
+
+    # Wait for graceful shutdown
+    local count=0
+    while [ $count -lt 10 ]; do
+        if ! check_process; then
+            log_success "NeuroFlux stopped gracefully"
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+    done
+
+    # Force kill if still running
+    log_warning "Graceful shutdown failed, force killing..."
+    pkill -KILL -f "python dashboard_api.py" 2>/dev/null || true
+
+    sleep 2
+    if ! check_process; then
+        log_success "NeuroFlux force killed"
+        return 0
+    else
+        log_error "Failed to stop NeuroFlux"
+        return 1
+    fi
+}
+
+# Restart NeuroFlux process
+restart_process() {
+    log_info "Restarting NeuroFlux..."
+    stop_process
+    sleep 2
+    start_process
+}
+
+# Show status
+show_status() {
+    echo "NeuroFlux Status"
+    echo "================"
+
+    if check_process; then
+        log_success "Status: Running"
+        echo ""
+        get_process_info
+    else
+        log_error "Status: Not Running"
+        echo ""
+        echo "To start: $0 start"
+    fi
+
+    echo ""
+    echo "Environment Info:"
+    bash env_manager.sh info 2>/dev/null | head -10
+
+    echo ""
+    echo "Recent Logs:"
+    if [ -f "neuroflux.log" ]; then
+        tail -5 neuroflux.log 2>/dev/null || echo "No recent logs"
+    else
+        echo "No log file found"
+    fi
+}
+
+# Health check
+health_check() {
+    log_info "Running health check..."
+
+    if ! check_process; then
+        echo "❌ Service not running"
+        return 1
+    fi
+
+    # Try to connect to health endpoint
+    if command -v curl &> /dev/null; then
+        if curl -f -s --max-time 5 http://localhost:5001/api/health > /dev/null 2>&1; then
+            echo "✅ Health endpoint responding"
+            return 0
         else
-            AGENTS="N/A"
-            TOTAL_AGENTS="12"
+            echo "❌ Health endpoint not responding"
+            return 1
         fi
     else
-        API_STATUS="DOWN"
-        AGENTS="0"
-        TOTAL_AGENTS="12"
+        echo "⚠️ curl not available, skipping health endpoint check"
+        echo "✅ Process is running"
+        return 0
     fi
-
-    # Process count
-    PROCESS_COUNT=$(pgrep -f "neuroflux\|gunicorn" | wc -l)
-
-    echo "$API_STATUS:$AGENTS:$TOTAL_AGENTS:$PROCESS_COUNT"
 }
 
-display_header() {
-    echo "=================================================================================="
-    echo " NeuroFlux Production Monitoring Dashboard"
-    echo "=================================================================================="
-    printf "%-12s %-8s %-8s %-8s %-12s %-8s %-8s %-8s %-8s\n" \
-           "TIME" "CPU%" "MEM%" "DISK%" "NET_CONN" "API" "AGENTS" "PROCS" "STATUS"
-    echo "----------------------------------------------------------------------------------"
-}
-
-display_metrics() {
-    local timestamp=$1
-    local cpu=$2
-    local mem=$3
-    local disk=$4
-    local net=$5
-    local api_status=$6
-    local agents=$7
-    local processes=$8
-
-    # Determine overall status
-    local status="OK"
-    local status_color=$GREEN
-
-    if [ "$api_status" = "DOWN" ]; then
-        status="CRIT"
-        status_color=$RED
-    elif [ "$cpu" -gt 90 ] || [ "$mem" -gt 90 ] || [ "$disk" -gt 90 ]; then
-        status="WARN"
-        status_color=$YELLOW
-    fi
-
-    printf "%-12s %-8s %-8s %-8s %-12s %-8s %-8s %-8s %s\n" \
-           "$timestamp" "${cpu}%" "${mem}%" "${disk}%" "$net" \
-           "$api_status" "$agents" "$processes" "${status_color}${status}${NC}"
-}
-
-monitor_loop() {
-    display_header
-
-    while true; do
-        # Get system metrics
-        SYS_METRICS=$(get_system_metrics)
-        CPU=$(echo "$SYS_METRICS" | cut -d: -f1)
-        MEM=$(echo "$SYS_METRICS" | cut -d: -f2)
-        DISK=$(echo "$SYS_METRICS" | cut -d: -f3)
-        NET=$(echo "$SYS_METRICS" | cut -d: -f4)
-
-        # Get NeuroFlux metrics
-        NF_METRICS=$(get_neuroflux_metrics)
-        API_STATUS=$(echo "$NF_METRICS" | cut -d: -f1)
-        AGENTS=$(echo "$NF_METRICS" | cut -d: -f2)
-        PROCESSES=$(echo "$NF_METRICS" | cut -d: -f3)
-
-        # Display metrics
-        TIMESTAMP=$(date '+%H:%M:%S')
-        display_metrics "$TIMESTAMP" "$CPU" "$MEM" "$DISK" "$NET" "$API_STATUS" "$AGENTS" "$PROCESSES"
-
-        # Log metrics
-        log "METRICS: CPU=${CPU}% MEM=${MEM}% DISK=${DISK}% NET=${NET} API=${API_STATUS} AGENTS=${AGENTS} PROCESSES=${PROCESSES}"
-
-        # Alert on critical conditions
-        if [ "$API_STATUS" = "DOWN" ]; then
-            print_status "${RED}🚨 ALERT: NeuroFlux API is DOWN!${NC}"
-            # Could send notification here
-        elif [ "$CPU" -gt 95 ] || [ "$MEM" -gt 95 ]; then
-            print_status "${YELLOW}⚠️  WARNING: High system resource usage${NC}"
-        fi
-
-        sleep "$INTERVAL"
-    done
-}
-
-show_help() {
-    echo "NeuroFlux Monitoring Script"
-    echo "Usage: $0 [interval_seconds]"
-    echo ""
-    echo "Arguments:"
-    echo "  interval_seconds  Monitoring interval in seconds (default: 60)"
-    echo ""
-    echo "Examples:"
-    echo "  $0              # Monitor every 60 seconds"
-    echo "  $0 30          # Monitor every 30 seconds"
-    echo "  $0 300         # Monitor every 5 minutes"
-    echo ""
-    echo "Metrics displayed:"
-    echo "  CPU%    - CPU usage percentage"
-    echo "  MEM%    - Memory usage percentage"
-    echo "  DISK%   - Disk usage percentage"
-    echo "  NET_CONN- Number of network connections"
-    echo "  API     - API status (UP/DOWN)"
-    echo "  AGENTS  - Number of active agents"
-    echo "  PROCS   - Number of running processes"
-    echo "  STATUS  - Overall system status"
-}
-
-main() {
-    case "${1:-}" in
-        -h|--help)
-            show_help
-            exit 0
-            ;;
-        *)
-            INTERVAL=${1:-60}
-            if ! [[ "$INTERVAL" =~ ^[0-9]+$ ]] || [ "$INTERVAL" -lt 5 ]; then
-                echo "Error: Interval must be a number >= 5 seconds"
-                exit 1
-            fi
-            log "Starting NeuroFlux monitoring (interval: ${INTERVAL}s)"
-            monitor_loop
-            ;;
-    esac
-}
-
-# Handle Ctrl+C gracefully
-trap 'echo -e "\n${BLUE}Monitoring stopped${NC}"; exit 0' INT
-
-# Run main function
-main "$@"
+# Main command handling
+case "$1" in
+    start)
+        start_process
+        ;;
+    stop)
+        stop_process
+        ;;
+    restart)
+        restart_process
+        ;;
+    status)
+        show_status
+        ;;
+    info)
+        get_process_info
+        ;;
+    health)
+        health_check
+        ;;
+    *)
+        echo "NeuroFlux Process Monitor"
+        echo "========================"
+        echo ""
+        echo "Usage: $0 {start|stop|restart|status|info|health}"
+        echo ""
+        echo "Commands:"
+        echo "  start   - Start NeuroFlux server"
+        echo "  stop    - Stop NeuroFlux server"
+        echo "  restart - Restart NeuroFlux server"
+        echo "  status  - Show detailed status"
+        echo "  info    - Show process information"
+        echo "  health  - Run health check"
+        echo ""
+        echo "Examples:"
+        echo "  $0 start    # Start the server"
+        echo "  $0 status   # Check if running"
+        echo "  $0 restart  # Restart the server"
+        exit 1
+        ;;
+esac
