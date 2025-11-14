@@ -9,50 +9,21 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
-# Import configuration (handles environment loading automatically)
-from config import config
-
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
+from flask_httpauth import HTTPBasicAuth
+from werkzeug.security import generate_password_hash, check_password_hash
 import json
 import time
 import random
 from datetime import datetime, timedelta
 import threading
 import asyncio
-import time
-import random
-from datetime import datetime, timedelta
-import threading
 import numpy as np
 import pandas as pd
-
-class EventLoopManager:
-    """Global event loop manager to prevent 'Event loop is closed' errors"""
-
-    def __init__(self):
-        self._loop = None
-        self._lock = threading.Lock()
-
-    def get_loop(self):
-        """Get or create the global event loop thread-safely"""
-        with self._lock:
-            if self._loop is None or self._loop.is_closed():
-                self._loop = event_loop_manager.get_loop()
-                asyncio.set_event_loop(self._loop)
-            return self._loop
-
-    async def run_async(self, coro):
-        """Run async coroutine safely with error handling"""
-        try:
-            return await coro
-        except Exception as e:
-            print(f"❌ Async operation error: {e}")
-            raise
-
-# Global event loop manager instance
-event_loop_manager = EventLoopManager()
+from collections import defaultdict
+import time
 
 # Import NeuroFlux orchestration components
 try:
@@ -97,70 +68,99 @@ except ImportError:
 
 # Configure Flask to serve React build files
 app = Flask(__name__,
-            static_folder='dashboard/build',
+            static_folder='../dashboard/build',
             static_url_path='/')
+CORS(app)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
-# Load configuration from config module
-app.config.update(
-    SECRET_KEY=config.SECRET_KEY,
-    DEBUG=config.DEBUG,
-    TESTING=config.TESTING,
-    ENV=config.ENV,
-    HOST=config.HOST,
-    PORT=config.PORT,
-    SESSION_TIMEOUT=config.SESSION_TIMEOUT,
-    MAX_CONTENT_LENGTH=config.MAX_CONTENT_LENGTH,
-)
+# Authentication setup
+auth = HTTPBasicAuth()
 
-# CORS configuration
-CORS(app, origins=config.CORS_ORIGINS)
-socketio = SocketIO(app, cors_allowed_origins=config.CORS_ORIGINS, async_mode='threading')
+@auth.verify_password
+def verify_password(username, password):
+    """Verify username and password dynamically"""
+    # Simple user store (in production, use proper database)
+    users = {
+        "admin": os.getenv("DASHBOARD_PASSWORD", "neuroflux2024"),
+        "user": os.getenv("DASHBOARD_USER_PASSWORD", "user123")
+    }
 
-# Configure logging
-import logging
-from logging.handlers import RotatingFileHandler
+    if username in users and users[username] == password:
+        return username
+    return None
 
-# Configure root logger
-logging.basicConfig(
-    level=getattr(logging, config.LOG_LEVEL.upper()),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+@auth.error_handler
+def auth_error(status):
+    return jsonify({"error": "Authentication required", "message": "Invalid credentials"}), status
 
-# Add file handler if log file is specified
-if config.LOG_FILE:
-    try:
-        os.makedirs(os.path.dirname(config.LOG_FILE), exist_ok=True)
-        file_handler = RotatingFileHandler(
-            config.LOG_FILE,
-            maxBytes=config.LOG_MAX_SIZE,
-            backupCount=config.LOG_BACKUP_COUNT
-        )
-        file_handler.setFormatter(logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        ))
-        logging.getLogger().addHandler(file_handler)
-        print(f"📝 Logging to file: {config.LOG_FILE}")
-    except (OSError, PermissionError) as e:
-        print(f"⚠️  Could not set up file logging: {e}")
-        print("📝 Using console logging only")
+# Rate limiting setup
+rate_limit_store = defaultdict(list)
+RATE_LIMIT_REQUESTS = 100  # requests per window
+RATE_LIMIT_WINDOW = 60  # seconds
 
-# Reduce noise from other libraries
-logging.getLogger('werkzeug').setLevel(logging.WARNING)
-logging.getLogger('socketio').setLevel(logging.WARNING)
-logging.getLogger('engineio').setLevel(logging.WARNING)
+def check_rate_limit(user):
+    """Check if user has exceeded rate limit"""
+    now = time.time()
+    user_requests = rate_limit_store[user]
 
-# Log configuration info
-print(f"🧠 NeuroFlux {config.ENV} server starting...")
-print(f"📍 Host: {config.HOST}:{config.PORT}")
-print(f"🐍 Python: {sys.version.split()[0]}")
-print(f"📦 Conda: {config.CONDA_ENV_NAME or 'None'}")
-print(f"🏠 Venv: {config.VENV_PATH or 'None'}")
+    # Remove old requests outside the window
+    user_requests[:] = [req_time for req_time in user_requests if now - req_time < RATE_LIMIT_WINDOW]
+
+    if len(user_requests) >= RATE_LIMIT_REQUESTS:
+        return False
+
+    user_requests.append(now)
+    return True
+
+def rate_limited(f):
+    """Decorator to enforce rate limiting"""
+    def wrapper(*args, **kwargs):
+        user = auth.current_user()
+        if not check_rate_limit(user):
+            return jsonify({"error": "Rate limit exceeded", "message": f"Maximum {RATE_LIMIT_REQUESTS} requests per {RATE_LIMIT_WINDOW} seconds"}), 429
+        return f(*args, **kwargs)
+    wrapper.__name__ = f.__name__
+    return wrapper
+
+# Error handlers
+@app.errorhandler(400)
+def bad_request(error):
+    return jsonify({"error": "Bad Request", "message": "Invalid request data"}), 400
+
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({"error": "Not Found", "message": "The requested resource was not found"}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({"error": "Internal Server Error", "message": "An unexpected error occurred"}), 500
+
+# Input validation helper
+def validate_symbol(symbol):
+    """Validate trading symbol format"""
+    if not symbol or not isinstance(symbol, str):
+        return False
+    # Basic validation: should contain '/' and be uppercase
+    return '/' in symbol and symbol == symbol.upper()
+
+def validate_exchange(exchange):
+    """Validate exchange name"""
+    valid_exchanges = ['binance', 'coinbase', 'kraken', 'bybit', 'okx', 'hyperliquid']
+    return exchange.lower() in valid_exchanges
 
 # Global instances
 orchestrator = None
 orchestrator_task = None
 ccxt_manager = None
 rt_agent_bus = None
+
+# Security middleware
+@app.before_request
+def enforce_https():
+    """Enforce HTTPS in production"""
+    if os.getenv('FLASK_ENV') == 'production':
+        if not request.is_secure and request.headers.get('X-Forwarded-Proto', 'http') != 'https':
+            return jsonify({"error": "HTTPS required", "message": "All requests must use HTTPS"}), 403
 
 # Mock data for development
 mock_data = {
@@ -264,6 +264,7 @@ def get_real_system_status():
         return mock_data
 
 @app.route('/api/status')
+@auth.login_required
 def get_system_status():
     """Get current system status"""
     return jsonify(get_real_system_status())
@@ -296,11 +297,13 @@ def get_real_agent_data():
         return mock_agents
 
 @app.route('/api/agents')
+@auth.login_required
 def get_agents():
     """Get current agent data"""
     return jsonify(get_real_agent_data())
 
 @app.route('/api/health')
+@auth.login_required
 def health_check():
     """System health check"""
     return jsonify({
@@ -491,22 +494,34 @@ def get_exchange_status():
     })
 
 @app.route('/api/exchanges/ticker/<exchange>/<symbol>')
+@auth.login_required
+@rate_limited
 def get_ticker(exchange, symbol):
     """Get real-time ticker data from an exchange"""
+    # Input validation
+    if not validate_exchange(exchange):
+        return jsonify({'error': 'Invalid exchange', 'valid_exchanges': ['binance', 'coinbase', 'kraken', 'bybit', 'okx', 'hyperliquid']}), 400
+
+    if not validate_symbol(symbol):
+        return jsonify({'error': 'Invalid symbol format', 'example': 'BTC/USDT'}), 400
+
     if not CCXT_AVAILABLE or not ccxt_manager:
-        return jsonify({'error': 'CCXT Exchange Manager not available'}), 503
+        return jsonify({'error': 'Exchange Manager not available', 'message': 'CCXT integration is not configured'}), 503
 
     try:
-        # Use global event loop manager
-        loop = event_loop_manager.get_loop()
+        # Create event loop for async CCXT call
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         ticker = loop.run_until_complete(ccxt_manager.get_ticker(exchange, symbol))
+        loop.close()
 
         if ticker:
             return jsonify(ticker)
         else:
-            return jsonify({'error': f'Ticker not available for {exchange}:{symbol}'}), 404
+            return jsonify({'error': f'Ticker not available for {exchange}:{symbol}', 'message': 'Exchange may not support this symbol'}), 404
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f"Error fetching ticker {exchange}:{symbol}: {e}")
+        return jsonify({'error': 'Failed to fetch ticker data', 'message': str(e)}), 500
 
 @app.route('/api/exchanges/orderbook/<exchange>/<symbol>')
 def get_orderbook(exchange, symbol):
@@ -517,9 +532,11 @@ def get_orderbook(exchange, symbol):
     try:
         limit = int(request.args.get('limit', 20))
 
-        # Use global event loop manager
-        loop = event_loop_manager.get_loop()
+        # Create event loop for async CCXT call
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         orderbook = loop.run_until_complete(ccxt_manager.get_orderbook(exchange, symbol, limit))
+        loop.close()
 
         if orderbook:
             return jsonify(orderbook)
@@ -581,8 +598,9 @@ def get_multi_exchange_data(symbol):
     exchanges = ['binance', 'coinbase', 'hyperliquid']  # Supported exchanges
     market_data = {}
 
-    # Use global event loop managers
-    loop = event_loop_manager.get_loop()
+    # Create event loop for async CCXT calls
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
     for exchange in exchanges:
         try:
@@ -598,6 +616,7 @@ def get_multi_exchange_data(symbol):
         except Exception as e:
             market_data[exchange] = {'error': str(e)}
 
+    loop.close()
 
     return jsonify({
         'symbol': symbol,
@@ -624,9 +643,11 @@ def subscribe_topic(topic):
     data = request.get_json() or {}
     subscriber_id = data.get('subscriber_id', f"dashboard_{topic}")
 
-    # Use global event loop manager
-    loop = event_loop_manager.get_loop()
+    # Create event loop for async call
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     success = loop.run_until_complete(rt_agent_bus.subscribe_topic(subscriber_id, topic))
+    loop.close()
 
     if success:
         return jsonify({'subscribed': True, 'topic': topic, 'subscriber_id': subscriber_id})
@@ -646,9 +667,11 @@ def broadcast_event(topic):
     payload = data['payload']
     priority = data.get('priority', 'medium')
 
-    # Use global event loop manager
-    loop = event_loop_manager.get_loop()
+    # Create event loop for async call
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     success = loop.run_until_complete(rt_agent_bus.broadcast_event(topic, payload))
+    loop.close()
 
     if success:
         return jsonify({'broadcast': True, 'topic': topic})
@@ -670,9 +693,11 @@ def send_trading_signal():
     confidence = data.get('confidence', 0.5)
     metadata = data.get('metadata', {})
 
-    # Use global event loop manager
-    loop = event_loop_manager.get_loop()
+    # Create event loop for async call
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     success = loop.run_until_complete(rt_agent_bus.send_trading_signal(signal_type, symbol, confidence, metadata))
+    loop.close()
 
     if success:
         return jsonify({'signal_sent': True, 'type': signal_type, 'symbol': symbol})
@@ -694,9 +719,11 @@ def send_risk_alert():
     message = data.get('message', 'Risk alert')
     agent_id = data.get('agent_id')
 
-    # Use global event loop manager
-    loop = event_loop_manager.get_loop()
+    # Create event loop for async call
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     success = loop.run_until_complete(rt_agent_bus.send_risk_alert(alert_type, severity, message, agent_id))
+    loop.close()
 
     if success:
         return jsonify({'alert_sent': True, 'type': alert_type, 'severity': severity})
@@ -713,8 +740,9 @@ def get_arbitrage_opportunities(symbol):
     exchanges = ['binance', 'coinbase', 'hyperliquid', 'bybit', 'kucoin']
     prices = {}
 
-    # Use global event loop managers
-    loop = event_loop_manager.get_loop()
+    # Create event loop for async CCXT calls
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
     for exchange in exchanges:
         try:
@@ -724,6 +752,7 @@ def get_arbitrage_opportunities(symbol):
         except Exception as e:
             continue
 
+    loop.close()
 
     if len(prices) < 2:
         return jsonify({'opportunities': [], 'message': 'Need at least 2 exchanges with price data'})
@@ -826,8 +855,9 @@ def get_trading_routes(symbol):
 
     exchanges = ['binance', 'coinbase', 'hyperliquid', 'bybit', 'kucoin']
 
-    # Use global event loop managers
-    loop = event_loop_manager.get_loop()
+    # Create event loop for async calls
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
     for exchange in exchanges:
         try:
@@ -856,6 +886,7 @@ def get_trading_routes(symbol):
         except Exception as e:
             continue
 
+    loop.close()
 
     # Sort by liquidity and volume
     routes.sort(key=lambda x: (x['bid_liquidity'] + x['ask_liquidity']) * x.get('volume_24h', 0), reverse=True)
@@ -885,8 +916,9 @@ def get_market_analysis(symbol):
     # Get data from multiple exchanges
     exchanges = ['binance', 'coinbase']
 
-    # Use global event loop managers
-    loop = event_loop_manager.get_loop()
+    # Create event loop for async calls
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
     prices = []
     volumes = []
@@ -913,6 +945,7 @@ def get_market_analysis(symbol):
         except Exception as e:
             continue
 
+    loop.close()
 
     # Calculate aggregate metrics
     if prices:
@@ -1039,22 +1072,10 @@ async def initialize_orchestrator():
             print(f"❌ Failed to initialize orchestrator: {e}")
             orchestrator = None
 
-    # Initialize CCXT Exchange Manager with API credentials
+    # Initialize CCXT Exchange Manager
     if CCXT_AVAILABLE:
         try:
-            # Create config dict for CCXT manager
-            ccxt_config = {
-                'binance_api_key': config.BINANCE_API_KEY,
-                'binance_secret': config.BINANCE_API_SECRET,
-                'coinbase_api_key': config.COINBASE_API_KEY,
-                'coinbase_secret': config.COINBASE_API_SECRET,
-                'bybit_api_key': config.BYBIT_API_KEY,
-                'bybit_secret': config.BYBIT_API_SECRET,
-                'kucoin_api_key': config.KUCOIN_API_KEY,
-                'kucoin_secret': config.KUCOIN_API_SECRET,
-            }
-
-            ccxt_manager = CCXTExchangeManager(ccxt_config)
+            ccxt_manager = CCXTExchangeManager()
             await ccxt_manager.start()
             print("✅ CCXT Exchange Manager initialized")
         except Exception as e:
@@ -1176,8 +1197,9 @@ def stream_market_data(symbol, last_data):
             'timestamp': datetime.now().isoformat()
         }
 
-        # Use global event loop managers
-        loop = event_loop_manager.get_loop()
+        # Create event loop for async calls
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
         for exchange in exchanges_to_check:
             try:
@@ -1196,6 +1218,7 @@ def stream_market_data(symbol, last_data):
                 # Exchange might not be available or symbol not supported
                 continue
 
+        loop.close()
 
         # Calculate price spread and arbitrage opportunities
         prices = [data['price'] for data in market_data['exchanges'].values() if data.get('price')]
@@ -1359,7 +1382,8 @@ if __name__ == '__main__':
     if ORCHESTRATOR_AVAILABLE:
         try:
             # Run orchestrator initialization in event loop
-            loop = event_loop_manager.get_loop()
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             loop.run_until_complete(start_orchestrator())
         except Exception as e:
             print(f"Failed to start orchestrator: {e}")
@@ -1377,4 +1401,67 @@ if __name__ == '__main__':
     print(f"📈 CCXT Exchanges: {'✅ Connected' if ccxt_manager else '❌ Unavailable'}")
     print(f"🔄 Real-Time Bus: {'✅ Active' if rt_agent_bus else '❌ Unavailable'}")
 
+# Prometheus metrics endpoint
+@app.route('/metrics')
+def metrics():
+    """Prometheus metrics endpoint"""
+    metrics_output = []
+
+    # System metrics
+    try:
+        import psutil
+        cpu_percent = psutil.cpu_percent(interval=1)
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+
+        metrics_output.extend([
+            f'# HELP neuroflux_cpu_usage CPU usage percentage',
+            f'# TYPE neuroflux_cpu_usage gauge',
+            f'neuroflux_cpu_usage {cpu_percent}',
+            f'',
+            f'# HELP neuroflux_memory_usage Memory usage percentage',
+            f'# TYPE neuroflux_memory_usage gauge',
+            f'neuroflux_memory_usage {memory.percent}',
+            f'',
+            f'# HELP neuroflux_disk_usage Disk usage percentage',
+            f'# TYPE neuroflux_disk_usage gauge',
+            f'neuroflux_disk_usage {disk.percent}',
+        ])
+    except ImportError:
+        pass
+
+    # Application metrics
+    if orchestrator:
+        agent_count = len(orchestrator.agent_registry.agents) if hasattr(orchestrator, 'agent_registry') else 0
+        task_count = orchestrator.stats.get('tasks_created', 0) if hasattr(orchestrator, 'stats') else 0
+        success_rate = (orchestrator.stats.get('tasks_completed', 0) / max(1, task_count)) * 100 if hasattr(orchestrator, 'stats') else 0
+
+        metrics_output.extend([
+            f'# HELP neuroflux_active_agents Number of active agents',
+            f'# TYPE neuroflux_active_agents gauge',
+            f'neuroflux_active_agents {agent_count}',
+            f'',
+            f'# HELP neuroflux_total_tasks Total number of tasks created',
+            f'# TYPE neuroflux_total_tasks counter',
+            f'neuroflux_total_tasks {task_count}',
+            f'',
+            f'# HELP neuroflux_task_success_rate Task success rate percentage',
+            f'# TYPE neuroflux_task_success_rate gauge',
+            f'neuroflux_task_success_rate {success_rate}',
+        ])
+
+    # API response time (simplified)
+    metrics_output.extend([
+        f'# HELP neuroflux_api_requests_total Total number of API requests',
+        f'# TYPE neuroflux_api_requests_total counter',
+        f'neuroflux_api_requests_total 0',  # Would need middleware to track
+        f'',
+        f'# HELP neuroflux_websocket_connections Number of active WebSocket connections',
+        f'# TYPE neuroflux_websocket_connections gauge',
+        f'neuroflux_websocket_connections 0',  # Would need to track connections
+    ])
+
+    return '\n'.join(metrics_output), 200, {'Content-Type': 'text/plain; charset=utf-8'}
+
+if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5001, debug=False, allow_unsafe_werkzeug=True)

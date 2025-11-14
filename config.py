@@ -104,6 +104,18 @@ class Config:
     X10_PUBLIC_KEY = os.getenv('X10_PUBLIC_KEY')
     X10_VAULT_ID = os.getenv('X10_VAULT_ID')
 
+    # Coinbase API Keys (required even for public data)
+    COINBASE_API_KEY = os.getenv('COINBASE_API_KEY')
+    COINBASE_API_SECRET = os.getenv('COINBASE_API_SECRET')
+
+    # Bybit API Keys
+    BYBIT_API_KEY = os.getenv('BYBIT_API_KEY')
+    BYBIT_API_SECRET = os.getenv('BYBIT_API_SECRET')
+
+    # KuCoin API Keys
+    KUCOIN_API_KEY = os.getenv('KUCOIN_API_KEY')
+    KUCOIN_API_SECRET = os.getenv('KUCOIN_API_SECRET')
+
     # NeuroFlux Core Configuration
     FLUX_SENSITIVITY = float(os.getenv('FLUX_SENSITIVITY', '0.8'))
     ADAPTIVE_LEARNING_RATE = float(os.getenv('ADAPTIVE_LEARNING_RATE', '0.1'))

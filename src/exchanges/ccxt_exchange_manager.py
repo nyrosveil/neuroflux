@@ -116,6 +116,14 @@ class CCXTExchangeManager:
 
         for exchange_name, exchange_config in self.SUPPORTED_EXCHANGES.items():
             try:
+                # Special handling for exchanges requiring credentials
+                if exchange_name == 'coinbase':
+                    api_key = self.config.get('coinbase_api_key')
+                    api_secret = self.config.get('coinbase_secret')
+                    if not api_key or not api_secret:
+                        cprint(f"⚠️  Coinbase requires API credentials for public data access, skipping", "yellow")
+                        continue
+
                 # Skip hyperliquid for now due to compatibility issues
                 if exchange_name == 'hyperliquid':
                     cprint(f"⚠️  HyperLiquid temporarily disabled due to CCXT compatibility issues", "yellow")
