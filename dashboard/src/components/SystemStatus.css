@@ -1,0 +1,91 @@
+.system-status {
+  background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+  border-radius: 12px;
+  padding: 20px;
+  color: white;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.system-status h3 {
+  margin: 0 0 15px 0;
+  font-size: 1.2em;
+  font-weight: 600;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.status-item {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 12px;
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+}
+
+.status-item .label {
+  font-size: 0.9em;
+  opacity: 0.8;
+  margin-bottom: 5px;
+  display: block;
+}
+
+.status-item .value {
+  font-size: 1.1em;
+  font-weight: 600;
+}
+
+.flux-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.flux-bar {
+  flex: 1;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.flux-bar::after {
+  content: '';
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #ff6b6b, #ffd93d, #6bcf7f);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.flux-value {
+  font-weight: 600;
+  min-width: 45px;
+}
+
+.status.active {
+  color: #6bcf7f;
+}
+
+.status.inactive {
+  color: #ff6b6b;
+}
+
+.last-update {
+  margin-top: 15px;
+  font-size: 0.8em;
+  opacity: 0.7;
+  text-align: center;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+}
+
+.loading p {
+  margin: 0;
+  opacity: 0.8;
+}
