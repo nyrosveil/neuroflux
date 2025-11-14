@@ -26,32 +26,108 @@ NeuroFlux is an advanced AI trading system that combines neuro-inspired algorith
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.10.9
+- Python 3.11+ (tested with 3.11)
 - Conda (recommended) or venv
+- Node.js & npm (for building React dashboard)
+
+### Installation
+
+#### Single-Command Deployment (Recommended) 🚀
+```bash
+# Clone repository
+git clone https://github.com/yourusername/neuroflux.git
+cd neuroflux
+
+# Create conda environment
+conda create -n neuroflux-env python=3.11 -y
+
+# Run everything with one command!
+./start.sh
+```
+
+**That's it!** Your NeuroFlux dashboard will be available at `http://localhost:5001`
+
+#### Manual Installation
+```bash
+# Create conda environment
+conda create -n neuroflux-env python=3.11 -y
+conda activate neuroflux-env
+
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Build React dashboard
+cd dashboard && npm install && npm run build && cd ..
+
+# Start server
+python dashboard_api.py
+```
+
+#### Full Installation (venv)
+```bash
+# Create virtual environment
+python3 -m venv neuroflux_env
+source neuroflux_env/bin/activate  # Linux/Mac
+# neuroflux_env\Scripts\activate   # Windows
+
+# Install all dependencies
+pip install -r requirements.txt
+```
+
+#### Development Installation
+```bash
+pip install -r requirements-dev.txt
+```
+
+#### Minimal Installation (Dashboard Only)
+```bash
+pip install -r requirements_minimal.txt
+```
 
 ### Dependencies
 
-**Required Dependencies:**
+**Core Dependencies (Always Required):**
 - `python-dotenv` - Environment variable management
 - `requests` - HTTP requests
-- `pandas` - Data manipulation
 - `numpy` - Numerical computing
 - `termcolor` - Terminal colors
-- `backtesting` - Backtesting framework
+- Flask ecosystem - Web framework and real-time features
+
+**Trading & Backtesting (Core Functionality):**
+- `pandas` - Data manipulation
 - `ccxt` - Cryptocurrency exchange library
-- `solana` - Solana blockchain integration
+- `ta` - Technical analysis
+- `backtesting` - Backtesting framework
+
+**Blockchain Integration:**
+- `solana` - Solana blockchain
 - `solders` - Solana transaction signing
 - `web3` - Ethereum/Web3 integration
-- `anthropic` / `openai` / `groq` / etc. - At least one AI provider
+
+**AI/LLM Providers (Optional - Uncomment as needed):**
+- `openai` - OpenAI GPT models
+- `anthropic` - Claude models
+- `google-generativeai` - Gemini models
+- `groq` - Groq models
+- `ollama` - Local models
+
+**Data Science & ML (Optional with graceful fallbacks):**
 - `scipy` - Scientific computing
+- `scikit-learn` - Machine learning algorithms
+- `statsmodels` - Statistical modeling
 
-**Optional Dependencies (with graceful fallbacks):**
-- `scikit-learn` - Machine learning algorithms (fallback: rule-based AI)
-- `tensorflow` - Neural networks (fallback: simplified models)
-- `torch` - PyTorch deep learning (fallback: CPU-only operations)
-- `transformers` - NLP models (fallback: basic text processing)
+**Advanced ML (Optional - heavy dependencies):**
+- `tensorflow` - Neural networks
+- `torch` - PyTorch deep learning
+- `transformers` - NLP models
 
-**Note:** NeuroFlux is designed with **graceful degradation**. The system will start and function with core features even if optional ML/AI libraries are not installed. AI features become optional enhancements rather than requirements.
+**Development Tools (Optional):**
+- `pytest` - Testing framework
+- `black` - Code formatting
+- `flake8` - Linting
+- `mypy` - Type checking
+
+**Note:** NeuroFlux uses **graceful degradation**. The system starts with core features even if optional ML/AI libraries are missing. AI features become optional enhancements rather than hard requirements.
 
 ### Installation
 
@@ -60,11 +136,11 @@ NeuroFlux is an advanced AI trading system that combines neuro-inspired algorith
 git clone https://github.com/yourusername/neuroflux.git
 cd neuroflux
 
-# Create conda environment
-conda create -n neuroflux python=3.10.9
-conda activate neuroflux
+# Create conda environment (recommended)
+conda create -n neuroflux-env python=3.11 -y
+conda activate neuroflux-env
 
-# Or use venv
+# Alternative: use venv
 python -m venv neuroflux_env
 source neuroflux_env/bin/activate  # On Windows: neuroflux_env\Scripts\activate
 ```
@@ -99,7 +175,7 @@ cp .env_example .env
 4. **Run Your First Agent**
 ```bash
 # Activate environment first
-conda activate neuroflux  # or source neuroflux_env/bin/activate
+conda activate neuroflux-env  # or source neuroflux_env/bin/activate
 
 # Run a simple agent
 python src/agents/chat_agent.py

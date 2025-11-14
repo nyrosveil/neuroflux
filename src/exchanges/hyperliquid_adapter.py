@@ -22,14 +22,11 @@ from .base_exchange import (
     OrderSide, OrderType, PositionSide
 )
 
-# Try importing HyperLiquid SDK
+# Try importing HyperLiquid SDK (CCXT-based)
 try:
-    from hyperliquid.info import Info
-    from hyperliquid.exchange import Exchange
-    from hyperliquid.utils import constants
-    from eth_account.signers.local import LocalAccount
-    import eth_account
+    from hyperliquid import HyperliquidSync
     HYPERLIQUID_AVAILABLE = True
+    cprint("✅ HyperLiquid SDK loaded successfully", "green")
 except ImportError:
     HYPERLIQUID_AVAILABLE = False
     cprint("⚠️  HyperLiquid SDK not available - running in simulation mode", "yellow")
@@ -48,10 +45,7 @@ class HyperLiquidAdapter(ExchangeAdapter):
         self.api_key = config.get('api_key')
         self.secret_key = config.get('secret_key')
         self.wallet_address = config.get('wallet_address')
-
-        # Initialize SDK clients
-        self.info_client = None
-        self.exchange_client = None
+        self.client = None
         self.account = None
 
         # Market data cache
@@ -60,23 +54,48 @@ class HyperLiquidAdapter(ExchangeAdapter):
         self.cache_ttl = 60  # 1 minute cache
 
     async def connect(self) -> bool:
-        """Establish connection to HyperLiquid"""
+        """Connect to HyperLiquid exchange"""
         if not HYPERLIQUID_AVAILABLE:
             cprint("⚠️  HyperLiquid SDK not available", "yellow")
             return False
 
         try:
-            # Initialize info client (read-only)
-            self.info_client = Info(base_url=constants.TESTNET_API_URL if self.config.get('testnet', True) else constants.MAINNET_API_URL)
+            # Initialize HyperLiquid client using CCXT interface
+            self.client = HyperliquidSync({
+                'apiKey': self.api_key,
+                'secret': self.secret_key,
+                'walletAddress': self.wallet_address,
+                'testnet': self.config.get('testnet', False),  # Default to mainnet
+            })
 
-            # Initialize exchange client if credentials provided
-            if self.api_key and self.secret_key and self.wallet_address:
-                self.account = eth_account.Account.from_key(self.secret_key)
-                self.exchange_client = Exchange(
-                    wallet=self.account,
-                    base_url=constants.TESTNET_API_URL if self.config.get('testnet', True) else constants.MAINNET_API_URL,
-                    vault_address=self.wallet_address if hasattr(self, 'vault_address') else None
-                )
+            # Test connection
+            await self.client.loadMarkets()
+
+            if self.api_key and self.secret_key:
+                cprint("✅ Connected to HyperLiquid with trading enabled", "green")
+            else:
+                cprint("✅ Connected to HyperLiquid (read-only mode)", "yellow")
+
+            self.connected = True
+            return True
+
+        except Exception as e:
+            cprint(f"❌ Failed to connect to HyperLiquid: {str(e)}", "red")
+            return False
+
+        try:
+            # Initialize HyperLiquid client using CCXT interface
+            self.client = HyperliquidSync({
+                'apiKey': self.api_key,
+                'secret': self.secret_key,
+                'walletAddress': self.wallet_address,
+                'testnet': self.config.get('testnet', False),  # Default to mainnet
+            })
+
+            # Test connection
+            await self.client.loadMarkets()
+
+            if self.api_key and self.secret_key:
                 cprint("✅ Connected to HyperLiquid with trading enabled", "green")
             else:
                 cprint("✅ Connected to HyperLiquid (read-only mode)", "yellow")
@@ -91,11 +110,11 @@ class HyperLiquidAdapter(ExchangeAdapter):
     async def disconnect(self) -> bool:
         """Close connection to HyperLiquid"""
         try:
-            self.info_client = None
-            self.exchange_client = None
-            self.account = None
+            if self.client:
+                await self.client.close()
+            self.client = None
             self.connected = False
-            cprint("✅ Disconnected from HyperLiquid", "green")
+            cprint("✅ Disconnected from HyperLiquid", "blue")
             return True
         except Exception as e:
             cprint(f"❌ Error disconnecting from HyperLiquid: {str(e)}", "red")

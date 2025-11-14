@@ -464,7 +464,7 @@ class NeuroFluxOrchestratorV32:
             # Submit tasks to orchestrator
             for task in tasks:
                 await self.task_orchestrator.submit_task(
-                    name=task.name,
+                    task.name,  # task_or_name (positional first parameter)
                     description=task.description,
                     task_type=task.task_type,
                     payload=task.payload,

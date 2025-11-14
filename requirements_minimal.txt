@@ -1,10 +1,9 @@
-# Minimal requirements for NeuroFlux development
+# Minimal requirements for dashboard API only
 python-dotenv==1.0.0
 requests==2.31.0
 numpy==1.26.2
 termcolor==2.4.0
 
-# Web Framework & API (essential)
 flask==3.1.2
 flask-cors==6.0.1
 flask-socketio==5.5.1
@@ -14,7 +13,6 @@ jinja2==3.1.6
 markupsafe==3.0.3
 blinker==1.9.0
 
-# WebSocket & Async (essential)
 python-socketio==5.14.3
 python-engineio==4.12.3
 bidict==0.23.1
@@ -22,10 +20,7 @@ simple-websocket==1.1.0
 wsproto==1.3.1
 h11==0.16.0
 
-# Production Server (essential)
 gunicorn==23.0.0
 packaging==25.0
-
-# Basic utilities
 psutil==6.0.0
 aiohttp==3.10.0

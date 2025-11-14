@@ -9,7 +9,7 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import json
@@ -62,7 +62,10 @@ except ImportError:
     print("⚠️  ML modules not available - running without ML features")
     ML_AVAILABLE = False
 
-app = Flask(__name__)
+# Configure Flask to serve React build files
+app = Flask(__name__,
+            static_folder='../dashboard/build',
+            static_url_path='/')
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
@@ -219,6 +222,26 @@ def health_check():
         'uptime': time.time() - start_time,
         'ml_available': ML_AVAILABLE
     })
+
+# React App Routes - Serve React frontend
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_react(path):
+    """Serve React app for all non-API routes"""
+    # Skip API routes - let Flask handle them normally
+    if path.startswith('api/') or path.startswith('socket.io/'):
+        from flask import abort
+        abort(404)
+
+    # Get the React build directory path
+    react_build_dir = os.path.join(os.path.dirname(__file__), 'dashboard', 'build')
+
+    # Serve static files from React build
+    if path and os.path.exists(os.path.join(react_build_dir, path)):
+        return send_from_directory(react_build_dir, path)
+
+    # Serve index.html for client-side routing
+    return send_from_directory(react_build_dir, 'index.html')
 
 # ML Prediction Endpoints
 @app.route('/api/ml/models')

@@ -26,6 +26,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from termcolor import cprint
 import ccxt.async_support as ccxt
+
+# Try to import HyperLiquid from hyperliquid.ccxt if available
+try:
+    from hyperliquid.ccxt import hyperliquid
+    ccxt.hyperliquid = hyperliquid
+    HYPERLIQUID_CCXT_AVAILABLE = True
+except ImportError:
+    HYPERLIQUID_CCXT_AVAILABLE = False
 import websockets
 import aiohttp
 

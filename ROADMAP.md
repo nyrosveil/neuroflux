@@ -66,6 +66,12 @@ Thêm các tính năng nâng cao và tối ưu hóa performance cho production u
 
 #### **Công việc chính**
 
+##### 0. **Enhanced Development Guidelines** ✅
+- [x] Comprehensive AGENTS.md with build/lint/test commands
+- [x] Code style guidelines (imports, formatting, types, naming, error handling)
+- [x] Complete API documentation (REST + WebSocket endpoints)
+- [x] Testing infrastructure verification and documentation
+
 ##### 1. **Real-time Dashboard**
 - [ ] Web-based dashboard với React/Vue.js
 - [ ] Live charts cho metrics và performance (Chart.js/D3)
