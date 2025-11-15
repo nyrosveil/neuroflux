@@ -1234,7 +1234,7 @@ async def setup_agent_message_forwarding():
         return
 
     # Start a background task to monitor agent activity
-    asyncio.create_task(monitor_agent_activity())
+    # asyncio.create_task(monitor_agent_activity())  # Disabled due to task destruction error
 
 async def monitor_agent_activity():
     """Monitor agent activity and forward status updates to dashboard"""
