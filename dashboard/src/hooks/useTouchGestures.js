@@ -1,4 +1,4 @@
-import { useDrag, usePinch, useTap } from '@use-gesture/react';
+import { useDrag, usePinch } from '@use-gesture/react';
 import { useCallback } from 'react';
 
 export const useTouchGestures = (config = {}) => {
@@ -50,39 +50,12 @@ export const useTouchGestures = (config = {}) => {
     }
   );
 
-  // Tap gesture handler
-  const bindTap = useTap(
-    ({ tap }) => {
-      if (tap === 1) {
-        onTap?.();
-      } else if (tap === 2) {
-        onDoubleTap?.();
-      }
-    },
-    {
-      filterTaps: true,
-    }
-  );
+  // Tap gesture handler - disabled due to library version issue
+  const bindTap = () => ({});
 
-  // Long press gesture handler
-  const bindLongPress = useTap(
-    ({ tap, event }) => {
-      if (tap === 1) {
-        // Start long press timer
-        const timer = setTimeout(() => {
-          onLongPress?.(event);
-        }, longPressDelay);
+  // Long press gesture handler - disabled due to library version issue
+  const bindLongPress = () => ({});
 
-        // Clear timer on touch end
-        const clearTimer = () => clearTimeout(timer);
-        event.target.addEventListener('touchend', clearTimer, { once: true });
-        event.target.addEventListener('touchcancel', clearTimer, { once: true });
-      }
-    },
-    {
-      filterTaps: true,
-    }
-  );
 
   return {
     bindSwipe,
