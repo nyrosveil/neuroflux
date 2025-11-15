@@ -1621,31 +1621,31 @@ async def initialize_system():
     """Initialize all system components asynchronously"""
     print("🚀 Initializing NeuroFlux system components...")
 
-    # Initialize orchestrator
-    if ORCHESTRATOR_AVAILABLE:
-        try:
-            print("🤖 Initializing orchestrator...")
-            await initialize_orchestrator()
-            print("✅ Orchestrator initialized successfully")
-        except Exception as e:
-            print(f"❌ Failed to initialize orchestrator: {e}")
-            print("🔄 Continuing with mock mode...")
+    # Initialize orchestrator - DISABLED for testing
+    # if ORCHESTRATOR_AVAILABLE:
+    #     try:
+    #         print("🤖 Initializing orchestrator...")
+    #         await initialize_orchestrator()
+    #         print("✅ Orchestrator initialized successfully")
+    #     except Exception as e:
+    #         print(f"❌ Failed to initialize orchestrator: {e}")
+    #         print("🔄 Continuing with mock mode...")
 
-    # Initialize real-time agent bus
-    global rt_agent_bus
-    if RT_BUS_AVAILABLE:
-        try:
-            print("🔄 Starting real-time agent bus...")
-            rt_agent_bus = RealTimeAgentBus(orchestrator=orchestrator)
-            success = await rt_agent_bus.start()
-            if success:
-                print("✅ Real-time agent bus started")
-            else:
-                print("❌ Real-time agent bus failed to start")
-                rt_agent_bus = None
-        except Exception as e:
-            print(f"❌ Failed to start real-time agent bus: {e}")
-            rt_agent_bus = None
+    # Initialize real-time agent bus - DISABLED for testing
+    # global rt_agent_bus
+    # if RT_BUS_AVAILABLE:
+    #     try:
+    #         print("🔄 Starting real-time agent bus...")
+    #         rt_agent_bus = RealTimeAgentBus(orchestrator=orchestrator)
+    #         success = await rt_agent_bus.start()
+    #         if success:
+    #             print("✅ Real-time agent bus started")
+    #         else:
+    #             print("❌ Real-time agent bus failed to start")
+    #             rt_agent_bus = None
+    #     except Exception as e:
+    #         print(f"❌ Failed to start real-time agent bus: {e}")
+    #         rt_agent_bus = None
 
     print("✅ System initialization complete")
 

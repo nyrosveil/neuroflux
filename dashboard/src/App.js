@@ -79,9 +79,8 @@ function App() {
   useEffect(() => {
     // Initialize WebSocket connection (proxied to API server)
     // Temporarily disabled to test HTTP-only functionality
-    // const newSocket = io('/');
-    // setSocket(newSocket);
-    setSocket(null);
+    const newSocket = null; // io('/');
+    setSocket(newSocket);
 
     // Fetch initial data
     const loadData = async () => {
@@ -97,20 +96,24 @@ function App() {
       setupInstallPrompt();
     }
 
-    // WebSocket event listeners
-    newSocket.on('system_update', (data) => {
-      setSystemData(data);
-    });
+    // WebSocket event listeners - disabled
+    // if (newSocket) {
+    //   newSocket.on('system_update', (data) => {
+    //     setSystemData(data);
+    //   });
 
-    newSocket.on('agent_update', (data) => {
-      setAgentData(prev => [...prev, data]);
-    });
+    //   newSocket.on('agent_update', (data) => {
+    //     setAgentData(prev => [...prev, data]);
+    //   });
 
-    newSocket.on('notification', (notification) => {
-      setNotifications(prev => [notification, ...prev.slice(0, 9)]); // Keep last 10
-    });
+    //   newSocket.on('notification', (notification) => {
+    //     setNotifications(prev => [notification, ...prev.slice(0, 9)]); // Keep last 10
+    //   });
+    // }
 
-    return () => newSocket.close();
+    return () => {
+      // if (newSocket) newSocket.close();
+    };
   }, []);
 
   const fetchSystemData = async () => {
