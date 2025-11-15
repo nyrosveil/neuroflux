@@ -78,8 +78,10 @@ function App() {
 
   useEffect(() => {
     // Initialize WebSocket connection (proxied to API server)
-    const newSocket = io('/');
-    setSocket(newSocket);
+    // Temporarily disabled to test HTTP-only functionality
+    // const newSocket = io('/');
+    // setSocket(newSocket);
+    setSocket(null);
 
     // Fetch initial data
     const loadData = async () => {
