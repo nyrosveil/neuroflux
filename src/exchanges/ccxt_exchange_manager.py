@@ -78,24 +78,34 @@ class CCXTExchangeManager:
         'binance': {
             'websocket_url': 'wss://stream.binance.com:9443/ws/',
             'futures_url': 'wss://fstream.binance.com/ws/',
-            'has_futures': True
-        },
-        'coinbase': {
-            'websocket_url': 'wss://ws-feed.pro.coinbase.com',
-            'has_futures': False
-        },
-        'hyperliquid': {
-            'websocket_url': 'wss://api.hyperliquid.xyz/ws',
-            'has_futures': True
+            'has_futures': True,
+            'requires_auth': False,  # Public API - no credentials needed
+            'priority': 1  # Highest priority
         },
         'bybit': {
             'websocket_url': 'wss://stream.bybit.com/v5/public/spot',
             'futures_url': 'wss://stream.bybit.com/v5/public/linear',
-            'has_futures': True
+            'has_futures': True,
+            'requires_auth': False,  # Public API
+            'priority': 2
         },
         'kucoin': {
             'websocket_url': 'wss://ws-api.kucoin.com/endpoint',
-            'has_futures': True
+            'has_futures': True,
+            'requires_auth': False,  # Public API
+            'priority': 3
+        },
+        'coinbase': {
+            'websocket_url': 'wss://ws-feed.pro.coinbase.com',
+            'has_futures': False,
+            'requires_auth': True,  # Requires API credentials
+            'priority': 4  # Lowest priority
+        },
+        'hyperliquid': {
+            'websocket_url': 'wss://api.hyperliquid.xyz/ws',
+            'has_futures': True,
+            'requires_auth': True,  # Requires credentials
+            'priority': 5  # Disabled for now
         }
     }
 
@@ -116,13 +126,20 @@ class CCXTExchangeManager:
 
         for exchange_name, exchange_config in self.SUPPORTED_EXCHANGES.items():
             try:
-                # Special handling for exchanges requiring credentials
-                if exchange_name == 'coinbase':
-                    api_key = self.config.get('coinbase_api_key')
-                    api_secret = self.config.get('coinbase_secret')
+                # Check if exchange requires authentication
+                requires_auth = exchange_config.get('requires_auth', True)
+
+                if requires_auth:
+                    # Exchanges that require API credentials
+                    api_key = self.config.get(f'{exchange_name}_api_key')
+                    api_secret = self.config.get(f'{exchange_name}_secret')
+
                     if not api_key or not api_secret:
-                        cprint(f"⚠️  Coinbase requires API credentials for public data access, skipping", "yellow")
+                        cprint(f"⚠️  {exchange_name} requires API credentials, skipping", "yellow")
                         continue
+                else:
+                    # Public API exchanges - no credentials needed
+                    cprint(f"✅ {exchange_name} using public API (no credentials required)", "green")
 
                 # Skip hyperliquid for now due to compatibility issues
                 if exchange_name == 'hyperliquid':
@@ -364,6 +381,25 @@ class CCXTExchangeManager:
             }
 
         return status
+
+    def get_best_available_exchange(self) -> Optional[str]:
+        """Get the highest priority available exchange"""
+        available_exchanges = []
+        for exchange_name in self.SUPPORTED_EXCHANGES.keys():
+            if exchange_name in self.ccxt_exchanges:
+                priority = self.SUPPORTED_EXCHANGES[exchange_name].get('priority', 999)
+                available_exchanges.append((exchange_name, priority))
+
+        if available_exchanges:
+            # Return exchange with lowest priority number (highest priority)
+            return min(available_exchanges, key=lambda x: x[1])[0]
+        return None
+
+    def get_available_exchanges(self) -> List[str]:
+        """Get list of available exchanges sorted by priority"""
+        available = [ex for ex in self.SUPPORTED_EXCHANGES.keys() if ex in self.ccxt_exchanges]
+        # Sort by priority
+        return sorted(available, key=lambda x: self.SUPPORTED_EXCHANGES[x].get('priority', 999))
 
     def add_data_callback(self, callback: Callable) -> None:
         """Add a callback for real-time data updates"""

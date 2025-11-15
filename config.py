@@ -153,6 +153,10 @@ class Config:
         str(PROJECT_ROOT)
     ]
 
+    # Exchange Configuration
+    DEFAULT_EXCHANGE = os.getenv('DEFAULT_EXCHANGE', 'binance')
+    EXCHANGE_PRIORITY = ['binance', 'bybit', 'kucoin', 'coinbase']
+
     @classmethod
     def to_dict(cls) -> Dict[str, Any]:
         """Convert config to dictionary for easy access"""

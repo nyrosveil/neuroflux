@@ -130,6 +130,56 @@ pip install -r requirements_minimal.txt
 
 **Note:** NeuroFlux uses **graceful degradation**. The system starts with core features even if optional ML/AI libraries are missing. AI features become optional enhancements rather than hard requirements.
 
+### Exchange API Configuration
+
+#### Default Exchange: Binance
+
+NeuroFlux uses **Binance** as the default exchange for all API operations because:
+
+- 🚀 **No API credentials required** for market data
+- 📊 **Highest rate limits** (1200 requests/minute)
+- 🌐 **Global reliability** and uptime
+- 💰 **Most liquid markets** worldwide
+
+#### API Endpoints
+
+```bash
+# Default exchange (Binance) - no API key needed
+GET /api/ticker/BTCUSDT
+GET /api/orderbook/ETHUSDT
+
+# Specific exchange
+GET /api/exchanges/ticker/bybit/BTCUSDT
+GET /api/exchanges/ticker/kucoin/BTC-USDT
+GET /api/exchanges/ticker/coinbase/BTC-USDT  # Requires API key
+
+# Exchange status
+GET /api/exchanges/status
+```
+
+#### Exchange Priority
+
+When no exchange is specified, NeuroFlux uses:
+1. **Binance** (recommended - no API key needed)
+2. **Bybit** (good alternative)
+3. **KuCoin** (additional option)
+4. **Coinbase** (requires API credentials)
+
+#### Required API Keys
+
+Some exchanges require API credentials even for public market data:
+
+**Coinbase (Required for Coinbase access):**
+```bash
+COINBASE_API_KEY=your_api_key
+COINBASE_API_SECRET=your_api_secret
+```
+
+**Optional Exchanges (work without keys):**
+- Binance ✅
+- Bybit ✅
+- KuCoin ✅
+
 ### Installation
 
 1. **Clone and Setup Environment**

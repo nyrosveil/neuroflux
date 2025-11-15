@@ -503,7 +503,7 @@ def get_ml_status():
 # CCXT Exchange Manager Endpoints
 @app.route('/api/exchanges/status')
 def get_exchange_status():
-    """Get status of all connected exchanges"""
+    """Get status of all supported exchanges"""
     ccxt_mgr = get_ccxt_manager()
     if not CCXT_AVAILABLE or not ccxt_mgr:
         return jsonify({
@@ -512,14 +512,34 @@ def get_exchange_status():
         })
 
     status = ccxt_mgr.get_exchange_status()
+    # Add priority and auth requirement information
+    for exchange, info in status.items():
+        exchange_config = ccxt_mgr.SUPPORTED_EXCHANGES.get(exchange, {})
+        info['priority'] = exchange_config.get('priority', 999)
+        info['requires_auth'] = exchange_config.get('requires_auth', True)
+
     return jsonify({
         'available': True,
         'exchanges': status
     })
 
 @app.route('/api/exchanges/ticker/<exchange>/<symbol>')
-def get_ticker(exchange, symbol):
+@app.route('/api/ticker/<symbol>')
+def get_ticker(exchange='binance', symbol=None):
     """Get real-time ticker data from an exchange"""
+    # Handle default route where exchange might be in symbol parameter
+    if symbol is None and '/' in exchange:
+        # Handle /api/ticker/BTCUSDT format
+        parts = exchange.split('/')
+        if len(parts) == 2:
+            exchange = 'binance'  # Default to binance
+            symbol = '/'.join(parts)
+        else:
+            return jsonify({'error': 'Invalid symbol format'}), 400
+
+    if not symbol:
+        return jsonify({'error': 'Symbol parameter is required'}), 400
+
     ccxt_mgr = get_ccxt_manager()
     if not CCXT_AVAILABLE or not ccxt_mgr:
         return jsonify({'error': 'CCXT Exchange Manager not available'}), 503
