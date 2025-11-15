@@ -67,8 +67,8 @@ cleanup_and_exit() {
 }
 trap cleanup_and_exit INT TERM HUP QUIT
 
-# Start dashboard
-log_info "Starting React dashboard on port 3000..."
+# Start dashboard in development mode (required for API proxy)
+log_info "Starting React dashboard in development mode on port 3000..."
 log_info "API calls will be proxied to http://localhost:8000"
 log_info "Press Ctrl+C to stop"
 

@@ -16,7 +16,14 @@ import { registerServiceWorker, requestNotificationPermission, setupInstallPromp
 import { io } from 'socket.io-client';
 
 function App() {
-  const [systemData, setSystemData] = useState(null);
+  const [systemData, setSystemData] = useState({
+    status: 'loading',
+    uptime: 0,
+    version: '3.2.0',
+    orchestrator: { connected: false },
+    ml_models: { available: false },
+    exchanges: { available: false }
+  });
   const [agentData, setAgentData] = useState([]);
   const [predictionData, setPredictionData] = useState(null);
   const [notifications, setNotifications] = useState([]);
@@ -25,6 +32,7 @@ function App() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [showViewSelector, setShowViewSelector] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Onboarding tour
   const { showTour, completeTour } = useOnboarding();
@@ -74,9 +82,11 @@ function App() {
     setSocket(newSocket);
 
     // Fetch initial data
-    fetchSystemData();
-    fetchAgentData();
-    fetchPredictionData();
+    const loadData = async () => {
+      await Promise.all([fetchSystemData(), fetchAgentData(), fetchPredictionData()]);
+      setIsLoading(false);
+    };
+    loadData();
 
     // Initialize PWA features
     if (!isPWA()) {
@@ -249,6 +259,18 @@ function App() {
       </div>
     );
   };
+
+  if (isLoading) {
+    return (
+      <div className="App loading">
+        <div className="loading-screen">
+          <div className="loading-spinner">🧠</div>
+          <h2>Loading NeuroFlux...</h2>
+          <p>Initializing AI trading system</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ErrorProvider>
