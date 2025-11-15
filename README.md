@@ -194,40 +194,36 @@ COINBASE_API_SECRET=your_api_secret
 - Bybit ✅
 - KuCoin ✅
 
-### Installation
 
-1. **Clone and Setup Environment**
+
+2. **Setup Environment**
 ```bash
-git clone https://github.com/yourusername/neuroflux.git
-cd neuroflux
+# Recommended: Hybrid conda + venv setup (automatic)
+bash start_hybrid.sh
 
-# Create conda environment (recommended)
+# Alternative: Manual conda setup
 conda create -n neuroflux-env python=3.11 -y
 conda activate neuroflux-env
 
-# Alternative: use venv
+# Alternative: venv only
 python -m venv neuroflux_env
-source neuroflux_env/bin/activate  # On Windows: neuroflux_env\Scripts\activate
+source neuroflux_env/bin/activate  # Linux/Mac
+# neuroflux_env\Scripts\activate   # Windows
 ```
 
-2. **Install Dependencies**
+3. **Install Dependencies**
 ```bash
-# Install all dependencies (recommended for full functionality)
+# Full installation (recommended)
 pip install -r requirements.txt
 
-# Or install only required dependencies for minimal setup
+# Development installation (includes testing tools)
+pip install -r requirements-dev.txt
+
+# Minimal installation (core functionality only)
 pip install python-dotenv requests pandas numpy termcolor backtesting ccxt solana solders web3 anthropic scipy
 ```
 
-3. **Test Installation**
-```bash
-# Test that core system works
-python src/main.py --status
-
-# Should show all agents initialized successfully
-```
-
-3. **Configure Environment**
+4. **Configure Environment**
 ```bash
 # Copy environment template
 cp .env_example .env
@@ -237,29 +233,61 @@ cp .env_example .env
 # Optional: Exchange APIs for live trading
 ```
 
-4. **Run Your First Agent**
+5. **Test Installation**
 ```bash
-# Activate environment first
-conda activate neuroflux-env  # or source neuroflux_env/bin/activate
+# Test core system
+python src/main.py --status
 
+# Should show all agents initialized successfully
+```
+
+6. **Run Your First Agent**
+```bash
 # Run a simple agent
 python src/agents/chat_agent.py
 ```
+
+## 📜 Available Scripts
+
+NeuroFlux includes several utility scripts for deployment and maintenance:
+
+| Script | Purpose | Usage |
+|--------|---------|-------|
+| `build.sh` | Build the application | `./scripts/build.sh` |
+| `deploy.sh` | Full deployment | `./scripts/deploy.sh` |
+| `deploy_simple.sh` | Quick deployment (API + Dashboard) | `./scripts/deploy_simple.sh` |
+| `stop.sh` | Stop all services | `./scripts/stop.sh` |
+| `healthcheck.sh` | Check system health | `./scripts/healthcheck.sh` |
+| `ci_pipeline.sh` | CI/CD pipeline | `./scripts/ci_pipeline.sh` |
 
 ## 🏗️ Architecture
 
 ```
 neuroflux/
-├── src/
-│   ├── agents/          # 48+ AI agents
-│   ├── models/          # LLM provider abstraction
-│   ├── strategies/      # Trading strategies
-│   ├── data/           # Agent outputs and memory
-│   └── config.py       # Global configuration
-├── docs/               # Documentation
-├── .claude/           # Claude skill for expert guidance
-├── .env_example       # API key template
+├── .venv/              # Virtual environment (auto-created)
+├── dashboard/          # React dashboard application
+│   ├── public/         # Static assets
+│   ├── src/           # React components and logic
+│   └── package.json   # Node.js dependencies
+├── docs/               # Documentation and guides
+├── scripts/            # Deployment and utility scripts
+├── src/                # Main Python application
+│   ├── agents/         # 48+ AI trading agents
+│   ├── analytics/      # Data analysis components
+│   ├── backtesting/    # Backtesting framework
+│   ├── exchanges/      # Exchange integrations
+│   ├── ml/            # Machine learning components
+│   ├── models/        # LLM provider abstractions
+│   ├── orchestration/ # Agent coordination
+│   ├── strategies/    # Trading strategies
+│   ├── swarm_intelligence/ # Collective decision making
+│   ├── tests/         # Unit and integration tests
+│   └── config.py      # Global configuration
+├── .env_example       # Environment variables template
+├── AGENTS.md          # Agent development guidelines
+├── LICENSE            # MIT License
 ├── requirements.txt   # Python dependencies
+├── requirements-dev.txt # Development dependencies
 └── README.md         # This file
 ```
 
@@ -298,6 +326,64 @@ COINGECKO_API_KEY=...
 SOLANA_PRIVATE_KEY=...
 HYPER_LIQUID_ETH_PRIVATE_KEY=...
 ```
+
+## 🧪 Testing
+
+NeuroFlux includes comprehensive testing to ensure reliability and performance.
+
+### Running Tests
+
+```bash
+# Run all tests
+python test_runner.py
+
+# Run pytest suite
+python -m pytest
+
+# Run specific test file
+python -m pytest src/tests/test_specific_file.py
+
+# Run single test method
+python -m pytest src/tests/test_specific_file.py::TestClass::test_method -v
+
+# Run with coverage
+python -m pytest --cov=src --cov-report=html
+
+# Run integration tests
+python -m pytest -m integration
+
+# Run async tests
+python -m pytest -m asyncio
+```
+
+### Test Categories
+- **Unit Tests**: Individual component testing
+- **Integration Tests**: Multi-component interaction testing
+- **Async Tests**: Asynchronous operation testing
+- **Coverage Reports**: HTML reports for code coverage analysis
+
+## 🔧 Code Quality
+
+Maintain high code quality with automated tools:
+
+```bash
+# Format code
+black .
+
+# Lint code
+flake8 .
+
+# Type check
+mypy .
+
+# Full quality check (recommended before commits)
+black . && flake8 . && mypy .
+```
+
+### Code Quality Tools
+- **Black**: Code formatting for consistent style
+- **Flake8**: Linting for code quality and style issues
+- **MyPy**: Static type checking for Python
 
 ## 🧪 Backtesting
 
@@ -351,12 +437,106 @@ Optional: Trade Execution
 
 ## 🤝 Contributing
 
-We welcome contributions! Please:
+We welcome contributions! Please follow these guidelines:
+
+### Development Workflow
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Make your changes following our code style guidelines
+4. Run tests and code quality checks
 5. Submit a pull request
+
+### Code Style Guidelines
+
+#### Imports
+```python
+# Standard library imports first
+import os
+import sys
+import json
+from typing import Dict, Any, Optional, List
+
+# Third-party imports second
+import numpy as np
+import pandas as pd
+from termcolor import cprint
+from flask import Flask
+
+# Local imports last
+from models.model_factory import ModelFactory
+from config import config
+```
+
+#### Naming Conventions
+- **Functions/Methods/Variables**: `snake_case`
+- **Classes**: `PascalCase`
+- **Constants**: `UPPER_CASE`
+- **Private methods**: `_leading_underscore`
+
+#### Error Handling
+```python
+try:
+    result = risky_operation()
+except SpecificException as e:
+    cprint(f"❌ Specific error: {e}", "red")
+    logger.error(f"Operation failed: {e}")
+    return None
+except Exception as e:
+    cprint(f"❌ Unexpected error: {e}", "red")
+    logger.exception("Unexpected error occurred")
+    raise
+```
+
+#### Type Hints
+```python
+from typing import Dict, Any, Optional, List
+
+def process_data(data: Dict[str, Any], timeout: Optional[float] = None) -> List[Dict[str, Any]]:
+    """Process data with optional timeout."""
+    pass
+```
+
+#### Documentation
+```python
+def function_name(param1: Type, param2: Type) -> ReturnType:
+    """Brief description of what function does.
+
+    Args:
+        param1: Description of param1
+        param2: Description of param2
+
+    Returns:
+        Description of return value
+
+    Raises:
+        SpecificException: When something goes wrong
+    """
+```
+
+#### Async/Await Patterns
+```python
+import asyncio
+
+async def async_operation(self) -> Dict[str, Any]:
+    """Perform async operation with proper error handling."""
+    try:
+        result = await self.client.request_async(data)
+        return result
+    except Exception as e:
+        cprint(f"❌ Async operation failed: {e}", "red")
+        raise
+
+def sync_wrapper(self) -> Dict[str, Any]:
+    """Sync wrapper for async operations."""
+    loop = event_loop_manager.get_loop()
+    return loop.run_until_complete(self.async_operation())
+```
+
+### Before Submitting
+- Run full test suite: `python test_runner.py`
+- Check code quality: `black . && flake8 . && mypy .`
+- Ensure all tests pass
+- Update documentation if needed
 
 ## ⚠️ Disclaimer
 
@@ -558,7 +738,11 @@ bash run_dev.sh
 
 ## 📜 License
 
-This project is open source and available under the MIT License.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 📋 Development Guidelines
+
+For detailed development guidelines including build/test commands, code style, and agent architecture conventions, see [AGENTS.md](AGENTS.md).
 
 ---
 
