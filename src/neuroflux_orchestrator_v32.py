@@ -20,7 +20,7 @@ from datetime import datetime
 from termcolor import cprint
 from dotenv import load_dotenv
 
-from orchestration import (
+from .orchestration import (
     CommunicationBus,
     TaskOrchestrator,
     ConflictResolutionEngine,
@@ -28,7 +28,7 @@ from orchestration import (
     AgentCapability as OrchestrationCapability,
     ServiceQuery
 )
-from orchestration.task_orchestrator import Task, TaskPriority
+from .orchestration.task_orchestrator import Task, TaskPriority
 
 # Load environment variables
 load_dotenv()

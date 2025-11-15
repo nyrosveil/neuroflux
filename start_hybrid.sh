@@ -119,32 +119,22 @@ fi
 log_info "Verifying environment and dependencies..."
 python -c "
 import sys
-print(f'Python: {sys.version}')
+import warnings
+warnings.filterwarnings('ignore', category=DeprecationWarning)
 
-# Test core dependencies
-try:
-    import numpy as np
-    print(f'✅ NumPy: {np.__version__}')
-except ImportError as e:
-    print(f'❌ NumPy: {e}')
+from version_utils import (
+    get_flask_version, get_numpy_version,
+    get_pandas_version, get_ccxt_version,
+    format_version_output
+)
 
-try:
-    import pandas as pd
-    print(f'✅ Pandas: {pd.__version__}')
-except ImportError as e:
-    print(f'❌ Pandas: {e}')
+print(f'Python: {sys.version.split()[0]}')
 
-try:
-    import flask
-    print(f'✅ Flask: {flask.__version__}')
-except ImportError as e:
-    print(f'❌ Flask: {e}')
-
-try:
-    import ccxt
-    print(f'✅ CCXT: {ccxt.__version__}')
-except ImportError as e:
-    print(f'❌ CCXT: {e}')
+# Test conda-installed packages with safe version detection
+print(format_version_output('NumPy', get_numpy_version()))
+print(format_version_output('Pandas', get_pandas_version()))
+print(format_version_output('Flask', get_flask_version()))
+print(format_version_output('CCXT', get_ccxt_version()))
 
 print('Environment verification complete')
 "

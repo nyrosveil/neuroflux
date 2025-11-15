@@ -91,32 +91,22 @@ fi
 log_info "Testing core dependencies..."
 python -c "
 import sys
-print('Python version:', sys.version)
+import warnings
+warnings.filterwarnings('ignore', category=DeprecationWarning)
 
-# Test conda-installed packages
-try:
-    import numpy as np
-    print('✅ NumPy:', np.__version__)
-except ImportError as e:
-    print('❌ NumPy:', e)
+from version_utils import (
+    get_flask_version, get_numpy_version,
+    get_pandas_version, get_ccxt_version,
+    format_version_output
+)
 
-try:
-    import pandas as pd
-    print('✅ Pandas:', pd.__version__)
-except ImportError as e:
-    print('❌ Pandas:', e)
+print(f'Python version: {sys.version.split()[0]}')
 
-try:
-    import flask
-    print('✅ Flask:', flask.__version__)
-except ImportError as e:
-    print('❌ Flask:', e)
-
-try:
-    import ccxt
-    print('✅ CCXT:', ccxt.__version__)
-except ImportError as e:
-    print('❌ CCXT:', e)
+# Test conda-installed packages with safe version detection
+print(format_version_output('NumPy', get_numpy_version()))
+print(format_version_output('Pandas', get_pandas_version()))
+print(format_version_output('Flask', get_flask_version()))
+print(format_version_output('CCXT', get_ccxt_version()))
 
 print('Core dependency test complete')
 "

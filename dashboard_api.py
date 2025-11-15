@@ -7,10 +7,13 @@ Built with love by Nyros Veil 🚀
 
 import sys
 import os
-sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+
+# Add src directory to Python path for imports
+src_path = os.path.join(os.path.dirname(__file__), 'src')
+sys.path.insert(0, src_path)
 
 # Import configuration (handles environment loading automatically)
-from config import config
+from dashboard_config import config
 
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
@@ -1081,12 +1084,12 @@ def get_prediction_dashboard():
 async def initialize_orchestrator():
     """Initialize the NeuroFlux orchestrator and CCXT manager"""
     global orchestrator, ccxt_manager
+
     if ORCHESTRATOR_AVAILABLE:
         try:
             orchestrator = NeuroFluxOrchestratorV32()
             await orchestrator.initialize()
 
-            # Set up message forwarding from agents to dashboard
             await setup_agent_message_forwarding()
 
             print("✅ NeuroFlux orchestrator initialized for dashboard")
@@ -1096,7 +1099,9 @@ async def initialize_orchestrator():
 
     # Initialize CCXT Exchange Manager with API credentials
     if CCXT_AVAILABLE:
+        print("🔍 DEBUG: Initializing CCXT Exchange Manager...")
         try:
+            print("🔍 DEBUG: Creating CCXT config...")
             # Create config dict for CCXT manager
             ccxt_config = {
                 'binance_api_key': config.BINANCE_API_KEY,
@@ -1108,13 +1113,22 @@ async def initialize_orchestrator():
                 'kucoin_api_key': config.KUCOIN_API_KEY,
                 'kucoin_secret': config.KUCOIN_API_SECRET,
             }
+            print("🔍 DEBUG: CCXT config created")
 
+            print("🔍 DEBUG: Creating CCXTExchangeManager instance...")
             ccxt_manager = CCXTExchangeManager(ccxt_config)
+            print("🔍 DEBUG: Calling ccxt_manager.start()...")
             await ccxt_manager.start()
+            print("🔍 DEBUG: CCXT manager start() completed")
+
             print("✅ CCXT Exchange Manager initialized")
         except Exception as e:
             print(f"❌ Failed to initialize CCXT Manager: {e}")
+            import traceback
+            traceback.print_exc()
             ccxt_manager = None
+
+    print("🔍 DEBUG: CCXT initialization phase complete")
 
     # Initialize Real-Time Agent Bus
     global rt_agent_bus
@@ -1414,9 +1428,7 @@ if __name__ == '__main__':
     # Initialize orchestrator if available
     if ORCHESTRATOR_AVAILABLE:
         try:
-            # Run orchestrator initialization in event loop
-            loop = event_loop_manager.get_loop()
-            loop.run_until_complete(start_orchestrator())
+            asyncio.run(start_orchestrator())
         except Exception as e:
             print(f"Failed to start orchestrator: {e}")
 
