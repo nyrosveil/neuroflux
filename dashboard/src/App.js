@@ -113,8 +113,11 @@ function App() {
 
   const fetchSystemData = async () => {
     try {
+      console.log('Fetching system data...');
       const response = await fetch('/api/status');
+      console.log('Response status:', response.status);
       const data = await response.json();
+      console.log('System data:', data);
       setSystemData(data);
     } catch (error) {
       console.error('Failed to fetch system data:', error);
@@ -123,8 +126,11 @@ function App() {
 
   const fetchAgentData = async () => {
     try {
+      console.log('Fetching agent data...');
       const response = await fetch('/api/agents');
+      console.log('Agent response status:', response.status);
       const data = await response.json();
+      console.log('Agent data:', data);
       setAgentData(data);
     } catch (error) {
       console.error('Failed to fetch agent data:', error);
@@ -133,8 +139,11 @@ function App() {
 
   const fetchPredictionData = async () => {
     try {
+      console.log('Fetching prediction data...');
       const response = await fetch('/api/dashboard/predictions');
+      console.log('Prediction response status:', response.status);
       const data = await response.json();
+      console.log('Prediction data:', data);
       setPredictionData(data);
     } catch (error) {
       console.error('Failed to fetch prediction data:', error);
