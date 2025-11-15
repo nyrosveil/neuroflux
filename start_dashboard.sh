@@ -46,13 +46,13 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
-# Port cleanup before starting
-log_info "Performing port cleanup before startup..."
-if [ -f "../port_manager.sh" ]; then
-    ../port_manager.sh cleanup
-else
-    log_warning "port_manager.sh not found, skipping port cleanup"
-fi
+# Skip port cleanup when called from deploy script (API is already running)
+# log_info "Performing port cleanup before startup..."
+# if [ -f "../port_manager.sh" ]; then
+#     ../port_manager.sh cleanup
+# else
+#     log_warning "port_manager.sh not found, skipping port cleanup"
+# fi
 
 # Trap for graceful shutdown
 cleanup_and_exit() {

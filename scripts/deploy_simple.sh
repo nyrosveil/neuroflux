@@ -56,7 +56,7 @@ log_info "Starting React dashboard on port 3000..."
 ./start_dashboard.sh &
 DASHBOARD_PID=$!
 
-# Wait for dashboard to start
+# Wait for dashboard to start (don't cleanup ports again to avoid killing API)
 sleep 10
 
 # Check if dashboard is running
