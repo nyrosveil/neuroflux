@@ -33,20 +33,12 @@ NeuroFlux is an advanced AI trading system that combines neuro-inspired algorith
 
 ### Installation
 
-#### Hybrid Environment Deployment (Recommended) 🚀
+#### Quick Deployment (Recommended) 🚀
 ```bash
 # Clone repository
 git clone https://github.com/yourusername/neuroflux.git
 cd neuroflux
 
-# Run everything with one command!
-# Automatically handles conda + venv setup
-bash start_hybrid.sh
-```
-
-**That's it!** Deploy NeuroFlux with a single command:
-
-```bash
 # Quick deployment (starts both API and Dashboard)
 ./scripts/deploy_simple.sh
 
@@ -92,11 +84,6 @@ pip install -r requirements.txt
 #### Development Installation
 ```bash
 pip install -r requirements-dev.txt
-```
-
-#### Minimal Installation (Dashboard Only)
-```bash
-pip install -r requirements_minimal.txt
 ```
 
 ### Dependencies
@@ -193,59 +180,6 @@ COINBASE_API_SECRET=your_api_secret
 - Binance ✅
 - Bybit ✅
 - KuCoin ✅
-
-
-
-2. **Setup Environment**
-```bash
-# Recommended: Hybrid conda + venv setup (automatic)
-bash start_hybrid.sh
-
-# Alternative: Manual conda setup
-conda create -n neuroflux-env python=3.11 -y
-conda activate neuroflux-env
-
-# Alternative: venv only
-python -m venv neuroflux_env
-source neuroflux_env/bin/activate  # Linux/Mac
-# neuroflux_env\Scripts\activate   # Windows
-```
-
-3. **Install Dependencies**
-```bash
-# Full installation (recommended)
-pip install -r requirements.txt
-
-# Development installation (includes testing tools)
-pip install -r requirements-dev.txt
-
-# Minimal installation (core functionality only)
-pip install python-dotenv requests pandas numpy termcolor backtesting ccxt solana solders web3 anthropic scipy
-```
-
-4. **Configure Environment**
-```bash
-# Copy environment template
-cp .env_example .env
-
-# Edit .env with your API keys
-# Required: At least one AI provider (Anthropic, OpenAI, etc.)
-# Optional: Exchange APIs for live trading
-```
-
-5. **Test Installation**
-```bash
-# Test core system
-python src/main.py --status
-
-# Should show all agents initialized successfully
-```
-
-6. **Run Your First Agent**
-```bash
-# Run a simple agent
-python src/agents/chat_agent.py
-```
 
 ## 📜 Available Scripts
 
@@ -563,7 +497,7 @@ bash env_manager.sh doctor
 bash env_manager.sh cleanup
 
 # Try again
-bash start_hybrid.sh
+./scripts/deploy_simple.sh
 ```
 
 **Manual fix:**
@@ -572,15 +506,15 @@ bash start_hybrid.sh
 conda init bash
 source ~/.bashrc
 
-# Then run the hybrid script
-bash start_hybrid.sh
+# Then run deployment
+./scripts/deploy_simple.sh
 ```
 
 **Force venv-only mode:**
 ```bash
 # If conda issues persist
 export FORCE_VENV_ONLY=true
-bash start_hybrid.sh
+./scripts/deploy_simple.sh
 ```
 
 ### Zsh Shell Support
@@ -589,13 +523,13 @@ NeuroFlux supports both Bash and Zsh shells with automatic detection and initial
 
 **For Zsh users:**
 ```zsh
-# Automatic setup (recommended)
-bash start_hybrid.sh
+# Quick deployment (recommended)
+./scripts/deploy_simple.sh
 
 # Manual conda initialization if needed
 conda init zsh
 source ~/.zshrc
-bash start_hybrid.sh
+./scripts/deploy_simple.sh
 ```
 
 **Zsh-specific issues:**
@@ -699,7 +633,7 @@ ps aux --sort=-%mem | head
 
 # Restart with lower settings
 export GUNICORN_WORKERS=2
-bash start_hybrid.sh
+./scripts/deploy_simple.sh
 ```
 
 **Slow startup:**
