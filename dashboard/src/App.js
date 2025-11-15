@@ -115,7 +115,6 @@ function App() {
     return () => {
       // if (newSocket) newSocket.close();
     };
-  }, []);
 
   const fetchSystemData = useCallback(async () => {
     try {
