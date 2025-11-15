@@ -29,6 +29,12 @@ from dotenv import load_dotenv
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.model_factory import ModelFactory
+try:
+    from cache_system import neuroflux_cache, cached
+except ImportError:
+    # Fallback if cache system not available
+    neuroflux_cache = None
+    cached = lambda *args, **kwargs: lambda func: func
 
 # Load environment variables
 load_dotenv()

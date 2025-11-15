@@ -1,0 +1,255 @@
+.market-analysis-widget {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border-radius: 12px;
+  padding: 20px;
+  margin: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  min-height: 400px;
+  overflow-y: auto;
+}
+
+.market-analysis-widget .widget-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.market-analysis-widget .widget-header h3 {
+  margin: 0;
+  font-size: 1.2em;
+  font-weight: 600;
+  color: #00ff88;
+}
+
+.market-analysis-widget .last-updated {
+  font-size: 0.8em;
+  color: #888;
+}
+
+.market-analysis-widget .analysis-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.market-analysis-widget .analysis-section {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.market-analysis-widget .analysis-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 1em;
+  font-weight: 500;
+  color: #00aaff;
+}
+
+.market-analysis-widget .signal-display {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.market-analysis-widget .main-signal {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: bold;
+  font-size: 1.2em;
+  text-align: center;
+  color: black;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.market-analysis-widget .confidence-bar {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  text-align: center;
+  color: black;
+  font-weight: 500;
+}
+
+.market-analysis-widget .trade-levels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.9em;
+}
+
+.market-analysis-widget .trade-levels div {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 6px 10px;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.market-analysis-widget .indicators-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.market-analysis-widget .indicator {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+.market-analysis-widget .indicator .label {
+  font-weight: 500;
+  color: #ccc;
+}
+
+.market-analysis-widget .indicator .value {
+  font-weight: 600;
+}
+
+.market-analysis-widget .indicator .value.oversold {
+  color: #00ff88;
+}
+
+.market-analysis-widget .indicator .value.overbought {
+  color: #ff4444;
+}
+
+.market-analysis-widget .indicator .value.bullish {
+  color: #00ff88;
+}
+
+.market-analysis-widget .indicator .value.bearish {
+  color: #ff4444;
+}
+
+.market-analysis-widget .indicator .value.neutral {
+  color: #ffff44;
+}
+
+.market-analysis-widget .regime-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.market-analysis-widget .regime-name {
+  font-size: 1.1em;
+  font-weight: bold;
+  text-align: center;
+  padding: 8px;
+  border-radius: 6px;
+  background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+  color: black;
+}
+
+.market-analysis-widget .regime-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  font-size: 0.9em;
+}
+
+.market-analysis-widget .regime-metrics div {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 6px 10px;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.market-analysis-widget .risk-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.market-analysis-widget .metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+.market-analysis-widget .metric .label {
+  font-weight: 500;
+  color: #ccc;
+}
+
+.market-analysis-widget .metric .value {
+  font-weight: 600;
+  color: #fff;
+}
+
+.market-analysis-widget .levels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  font-size: 0.9em;
+}
+
+.market-analysis-widget .levels div {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 8px 12px;
+  border-radius: 6px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.market-analysis-widget .loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+  font-size: 1.1em;
+  color: #888;
+}
+
+.market-analysis-widget .error {
+  background: rgba(255, 68, 68, 0.2);
+  border: 1px solid #ff4444;
+  border-radius: 6px;
+  padding: 15px;
+  text-align: center;
+  color: #ffaaaa;
+}
+
+.market-analysis-widget .no-data {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+  font-size: 1.1em;
+  color: #888;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .market-analysis-widget {
+    margin: 5px;
+    padding: 15px;
+  }
+
+  .market-analysis-widget .indicators-grid,
+  .market-analysis-widget .regime-metrics,
+  .market-analysis-widget .trade-levels,
+  .market-analysis-widget .levels {
+    grid-template-columns: 1fr;
+  }
+
+  .market-analysis-widget .widget-header {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+}
