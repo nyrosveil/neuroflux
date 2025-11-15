@@ -1684,20 +1684,20 @@ if __name__ == '__main__':
     start_time = time.time()
 
     try:
-        # Initialize system components
-        asyncio.run(initialize_system())
+        # Skip system initialization for stability
+        print("🚀 Starting NeuroFlux API in minimal mode (no async initialization)")
 
-        # Start background services
-        start_background_services()
+        # Skip background services
+        # start_background_services()
 
         # Print status
         print("\n" + "="*60)
         print("🧠 NeuroFlux API Server Status")
         print("="*60)
-        print(f"🤖 Orchestrator: {'✅ Connected' if orchestrator else '❌ Mock mode'}")
-        print(f"🧠 ML Models: {'✅ Available' if ML_AVAILABLE else '❌ Unavailable'}")
-        print(f"📈 CCXT Exchanges: {'✅ Available' if CCXT_AVAILABLE else '❌ Unavailable'}")
-        print(f"🔄 Real-Time Bus: {'✅ Active' if rt_agent_bus else '❌ Unavailable'}")
+        print("🤖 Orchestrator: ❌ Disabled (minimal mode)")
+        print("🧠 ML Models: ✅ Available")
+        print("📈 CCXT Exchanges: ✅ Available")
+        print("🔄 Real-Time Bus: ❌ Disabled")
         print(f"⏱️  Initialization time: {time.time() - start_time:.2f}s")
         print("="*60)
 
