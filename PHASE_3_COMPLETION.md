@@ -84,7 +84,7 @@
 🧠 ML Models: ❌ Unavailable (expected)
 📈 CCXT Exchanges: ✅ Connected (5 exchanges)
 🔄 Real-Time Bus: ✅ Active
-🌐 WebSocket Server: ✅ Running (port 5001)
+🌐 WebSocket Server: ✅ Running (port 8000)
 ```
 
 ### **🎯 Key Achievements**

@@ -44,7 +44,21 @@ cd neuroflux
 bash start_hybrid.sh
 ```
 
-**That's it!** Your NeuroFlux dashboard will be available at `http://localhost:5001`
+**That's it!** Deploy NeuroFlux with a single command:
+
+```bash
+# Quick deployment (starts both API and Dashboard)
+./scripts/deploy_simple.sh
+
+# Access your system:
+# Dashboard: http://localhost:3000
+# API:        http://localhost:8000
+```
+
+**Stop services anytime:**
+```bash
+./scripts/stop.sh
+```
 
 *NeuroFlux uses a hybrid conda + venv approach for optimal performance and compatibility.*
 
@@ -428,17 +442,26 @@ bash env_manager.sh cleanup
 
 ### Common Issues
 
-#### Port 5001 Already in Use
+#### Services Not Starting
 ```bash
-# Find what's using the port
-lsof -i :5001
+# Check port status
+./port_manager.sh status
 
-# Kill the process
-kill -9 <PID>
+# Clean up all ports
+./port_manager.sh cleanup
 
-# Or use a different port
-export PORT=5002
-bash start_hybrid.sh
+# Rebuild and deploy
+./scripts/build.sh
+./scripts/deploy_simple.sh
+```
+
+#### Manual Deployment (Alternative)
+```bash
+# Terminal 1: Start API
+./start_api.sh
+
+# Terminal 2: Start Dashboard
+./start_dashboard.sh
 ```
 
 #### React Dashboard Not Building

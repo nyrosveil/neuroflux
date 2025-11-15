@@ -49,6 +49,11 @@ class MessageType(Enum):
     SYSTEM_EVENT = "system_event"
     COORDINATION = "coordination"
     BROADCAST = "broadcast"
+    PREDICTION_UPDATE = "prediction_update"
+    PRICE_PREDICTION = "price_prediction"
+    VOLATILITY_UPDATE = "volatility_update"
+    SENTIMENT_UPDATE = "sentiment_update"
+    MODEL_PERFORMANCE = "model_performance"
 
 
 @dataclass
@@ -220,6 +225,75 @@ class RealTimeAgentBus:
         )
 
         return await self.publish_message(message)
+
+    async def broadcast_prediction_update(self, prediction_data: Dict[str, Any],
+                                        priority: MessagePriority = MessagePriority.HIGH) -> bool:
+        """Broadcast prediction update to all dashboard clients."""
+        message = RealTimeMessage(
+            message_id=str(uuid.uuid4()),
+            message_type=MessageType.PREDICTION_UPDATE,
+            priority=priority,
+            sender="orchestrator",
+            recipient=None,
+            topic="prediction_update",
+            payload={
+                "type": "prediction_update",
+                "data": prediction_data,
+                "timestamp": datetime.now().isoformat()
+            },
+            timestamp=time.time()
+        )
+
+        success = await self.publish_message(message)
+        if success:
+            cprint(f"📊 Broadcasted prediction update: {prediction_data.get('task_name', 'unknown')}", "green")
+        return success
+
+    async def broadcast_sentiment_update(self, sentiment_data: Dict[str, Any],
+                                        priority: MessagePriority = MessagePriority.MEDIUM) -> bool:
+        """Broadcast sentiment analysis update to all dashboard clients."""
+        message = RealTimeMessage(
+            message_id=str(uuid.uuid4()),
+            message_type=MessageType.SENTIMENT_UPDATE,
+            priority=priority,
+            sender="orchestrator",
+            recipient=None,
+            topic="sentiment_update",
+            payload={
+                "type": "sentiment_update",
+                "data": sentiment_data,
+                "timestamp": datetime.now().isoformat()
+            },
+            timestamp=time.time()
+        )
+
+        success = await self.publish_message(message)
+        if success:
+            cprint(f"📊 Broadcasted sentiment update: {sentiment_data.get('token', 'unknown')}", "green")
+        return success
+
+    async def broadcast_volatility_update(self, volatility_data: Dict[str, Any],
+                                         priority: MessagePriority = MessagePriority.MEDIUM) -> bool:
+        """Broadcast volatility/risk analysis update to all dashboard clients."""
+        message = RealTimeMessage(
+            message_id=str(uuid.uuid4()),
+            message_type=MessageType.VOLATILITY_UPDATE,
+            priority=priority,
+            sender="orchestrator",
+            recipient=None,
+            topic="volatility_update",
+            payload={
+                "type": "volatility_update",
+                "data": volatility_data,
+                "timestamp": datetime.now().isoformat()
+            },
+            timestamp=time.time()
+        )
+
+        success = await self.publish_message(message)
+        if success:
+            cprint(f"📊 Broadcasted volatility update: {volatility_data.get('volatility_pct', 0):.2f}%", "green")
+        return success
 
     async def subscribe_topic(self, subscriber_id: str, topic: str) -> bool:
         """Subscribe to a topic."""

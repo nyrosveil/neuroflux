@@ -84,8 +84,12 @@ stop_process() {
         return 0
     fi
 
-    # Try graceful shutdown first
-    pkill -TERM -f "python dashboard_api.py" 2>/dev/null || true
+    # Try graceful shutdown first using port manager
+    if [ -f "../port_manager.sh" ]; then
+        bash ../port_manager.sh kill-all
+    else
+        pkill -TERM -f "python dashboard_api.py" 2>/dev/null || true
+    fi
 
     # Wait for graceful shutdown
     local count=0
@@ -100,7 +104,11 @@ stop_process() {
 
     # Force kill if still running
     log_warning "Graceful shutdown failed, force killing..."
-    pkill -KILL -f "python dashboard_api.py" 2>/dev/null || true
+    if [ -f "../port_manager.sh" ]; then
+        bash ../port_manager.sh kill-all
+    else
+        pkill -KILL -f "python dashboard_api.py" 2>/dev/null || true
+    fi
 
     sleep 2
     if ! check_process; then
@@ -159,7 +167,7 @@ health_check() {
 
     # Try to connect to health endpoint
     if command -v curl &> /dev/null; then
-        if curl -f -s --max-time 5 http://localhost:5001/api/health > /dev/null 2>&1; then
+        if curl -f -s --max-time 5 http://localhost:8000/api/health > /dev/null 2>&1; then
             echo "✅ Health endpoint responding"
             return 0
         else

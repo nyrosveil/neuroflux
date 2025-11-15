@@ -51,6 +51,7 @@ class NeuroFluxOrchestratorV32:
         self.agent_registry = AgentRegistry(self.communication_bus)
         self.conflict_resolution = ConflictResolutionEngine(self.communication_bus, self.agent_registry)
         self.task_orchestrator = TaskOrchestrator(self.communication_bus, self.agent_registry, self.conflict_resolution)
+        self.realtime_bus = None  # Will be set by the dashboard API
 
         # System state
         self.running = False
@@ -89,7 +90,8 @@ class NeuroFluxOrchestratorV32:
         self.system_tasks = [
             asyncio.create_task(self._health_monitoring_loop()),
             asyncio.create_task(self._cycle_scheduler()),
-            asyncio.create_task(self._conflict_monitoring_loop())
+            asyncio.create_task(self._conflict_monitoring_loop()),
+            asyncio.create_task(self._message_processing_loop())
         ]
 
         self.running = True
@@ -519,6 +521,159 @@ class NeuroFluxOrchestratorV32:
             cycle_results['error'] = str(e)
 
         return cycle_results
+
+    async def _message_processing_loop(self) -> None:
+        """Process incoming messages from agents."""
+        cprint("📨 Starting message processing loop...", "blue")
+
+        while self.running:
+            try:
+                # Get messages from communication bus
+                # Note: This is a simplified implementation. In a real system,
+                # the communication bus would have a queue or callback system
+                await asyncio.sleep(1)  # Check every second
+
+                # For now, we'll implement a basic message queue check
+                # This would be replaced with proper message queue integration
+                if hasattr(self.communication_bus, 'message_queue') and not self.communication_bus.message_queue.empty():
+                    message = await self.communication_bus.message_queue.get()
+
+                    if message.get('message_type') == 'task_result':
+                        await self._handle_task_result(message)
+
+            except Exception as e:
+                cprint(f"❌ Message processing error: {e}", "red")
+                await asyncio.sleep(5)  # Wait before retrying
+
+    async def _handle_task_result(self, message: Dict[str, Any]) -> None:
+        """Handle task result messages from agents."""
+        payload = message.get('payload', {})
+        task_id = payload.get('task_id')
+        result = payload.get('result', {})
+        status = payload.get('status')
+
+        if status == 'completed' and task_id:
+            # Update task status
+            task = self.task_orchestrator.tasks.get(task_id)
+            if task:
+                task.status = 'COMPLETED'
+                task.result = result
+
+                # Handle prediction results
+                if 'ml_prediction' in task_id or 'prediction' in task.name.lower():
+                    await self._broadcast_prediction_result(result, task)
+
+                # Handle sentiment analysis results
+                elif 'sentiment' in task.name.lower():
+                    await self._broadcast_sentiment_result(result, task)
+
+                # Handle risk/volatility analysis results
+                elif 'risk' in task.name.lower() or 'volatility' in task.name.lower():
+                    await self._broadcast_risk_result(result, task)
+
+    async def _broadcast_prediction_result(self, prediction_result: Dict[str, Any], task) -> None:
+        """Broadcast prediction results to dashboard via real-time bus."""
+        try:
+            # Format prediction data for dashboard
+            dashboard_data = self._format_prediction_for_dashboard(prediction_result, task)
+
+            if dashboard_data and self.realtime_bus:
+                # Broadcast to all connected dashboard clients
+                await self.realtime_bus.broadcast_prediction_update(dashboard_data)
+                cprint(f"📊 Broadcasted prediction update: {task.name}", "green")
+
+        except Exception as e:
+            cprint(f"❌ Failed to broadcast prediction result: {e}", "red")
+
+    async def _broadcast_sentiment_result(self, sentiment_result: Dict[str, Any], task) -> None:
+        """Broadcast sentiment analysis results to dashboard."""
+        try:
+            dashboard_data = self._format_sentiment_for_dashboard(sentiment_result, task)
+
+            if dashboard_data and hasattr(self, 'realtime_bus') and self.realtime_bus:
+                await self.realtime_bus.broadcast_sentiment_update(dashboard_data)
+                cprint(f"📊 Broadcasted sentiment update: {task.name}", "green")
+
+        except Exception as e:
+            cprint(f"❌ Failed to broadcast sentiment result: {e}", "red")
+
+    async def _broadcast_risk_result(self, risk_result: Dict[str, Any], task) -> None:
+        """Broadcast risk/volatility analysis results to dashboard."""
+        try:
+            dashboard_data = self._format_risk_for_dashboard(risk_result, task)
+
+            if dashboard_data and hasattr(self, 'realtime_bus') and self.realtime_bus:
+                await self.realtime_bus.broadcast_volatility_update(dashboard_data)
+                cprint(f"📊 Broadcasted risk update: {task.name}", "green")
+
+        except Exception as e:
+            cprint(f"❌ Failed to broadcast risk result: {e}", "red")
+
+    def _format_prediction_for_dashboard(self, prediction_result: Dict[str, Any], task) -> Dict[str, Any]:
+        """Format prediction result for dashboard consumption."""
+        try:
+            formatted_data = {
+                'task_id': task.task_id,
+                'task_name': task.name,
+                'timestamp': datetime.now().isoformat(),
+                'model_performance': {}
+            }
+
+            # Extract prediction data based on task type
+            if 'price' in task.name.lower():
+                formatted_data['price_predictions'] = prediction_result
+            elif 'volume' in task.name.lower():
+                formatted_data['volume_predictions'] = prediction_result
+            elif 'sentiment' in task.name.lower():
+                formatted_data['sentiment_analysis'] = prediction_result
+
+            # Extract model performance if available
+            if 'model_performance' in prediction_result:
+                formatted_data['model_performance'] = prediction_result['model_performance']
+
+            return formatted_data
+
+        except Exception as e:
+            cprint(f"❌ Error formatting prediction data: {e}", "red")
+            return None
+
+    def _format_sentiment_for_dashboard(self, sentiment_result: Dict[str, Any], task) -> Dict[str, Any]:
+        """Format sentiment analysis result for dashboard consumption."""
+        try:
+            formatted_data = {
+                'task_id': task.task_id,
+                'task_name': task.name,
+                'token': sentiment_result.get('token', 'unknown'),
+                'timestamp': datetime.now().isoformat(),
+                'overall_score': sentiment_result.get('overall_score', 0),
+                'sources': sentiment_result.get('sources', {}),
+                'recommendation': sentiment_result.get('recommendation', 'neutral')
+            }
+
+            return formatted_data
+
+        except Exception as e:
+            cprint(f"❌ Error formatting sentiment data: {e}", "red")
+            return None
+
+    def _format_risk_for_dashboard(self, risk_result: Dict[str, Any], task) -> Dict[str, Any]:
+        """Format risk/volatility analysis result for dashboard consumption."""
+        try:
+            formatted_data = {
+                'task_id': task.task_id,
+                'task_name': task.name,
+                'timestamp': datetime.now().isoformat(),
+                'volatility_pct': risk_result.get('volatility_pct', 0),
+                'sharpe_ratio': risk_result.get('sharpe_ratio', 0),
+                'var_95': risk_result.get('var_95', 0),
+                'risk_alerts': risk_result.get('alerts', [])
+            }
+
+            return formatted_data
+
+        except Exception as e:
+            cprint(f"❌ Error formatting risk data: {e}", "red")
+            return None
 
     async def _health_monitoring_loop(self) -> None:
         """Monitor agent health and update registry."""

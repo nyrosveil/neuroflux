@@ -267,49 +267,52 @@ class NeuroFluxOrchestrator:
 
     def _run_agent_single_iteration(self, agent_module, agent_name: str):
         """Run a single iteration of an agent that normally runs in a loop"""
+        # Agent iteration methods mapping for better maintainability
+        agent_iteration_methods = {
+            'risk_agent': self._run_risk_agent_iteration,
+            'sentiment_agent': self._run_sentiment_agent_iteration,
+            'trading_agent': self._run_trading_agent_iteration,
+            'research_agent': self._run_research_agent_iteration,
+            'chartanalysis_agent': self._run_chartanalysis_agent_iteration,
+            'funding_agent': self._run_funding_agent_iteration,
+            'liquidation_agent': self._run_liquidation_agent_iteration,
+            'whale_agent': self._run_whale_agent_iteration,
+            'coingecko_agent': self._run_coingecko_agent_iteration,
+            'sniper_agent': self._run_sniper_agent_iteration,
+            'strategy_agent': self._run_strategy_agent_iteration,
+            'swarm_agent': self._run_swarm_agent_iteration,
+            'websearch_agent': self._run_websearch_agent_iteration,
+            'rbi_agent': self._run_rbi_agent_iteration,
+        }
+
         # Extract the core logic from each agent's main loop
-        if agent_name == 'risk_agent':
-            return self._run_risk_agent_iteration(agent_module)
-        elif agent_name == 'sentiment_agent':
-            return self._run_sentiment_agent_iteration(agent_module)
-        elif agent_name == 'trading_agent':
-            return self._run_trading_agent_iteration(agent_module)
-        elif agent_name == 'research_agent':
-            return self._run_research_agent_iteration(agent_module)
-        elif agent_name == 'chartanalysis_agent':
-            return self._run_chartanalysis_agent_iteration(agent_module)
-        elif agent_name == 'funding_agent':
-            return self._run_funding_agent_iteration(agent_module)
-        elif agent_name == 'liquidation_agent':
-            return self._run_liquidation_agent_iteration(agent_module)
-        elif agent_name == 'whale_agent':
-            return self._run_whale_agent_iteration(agent_module)
-        elif agent_name == 'coingecko_agent':
-            return self._run_coingecko_agent_iteration(agent_module)
-        elif agent_name == 'sniper_agent':
-            return self._run_sniper_agent_iteration(agent_module)
-        elif agent_name == 'strategy_agent':
-            return self._run_strategy_agent_iteration(agent_module)
-        elif agent_name == 'swarm_agent':
-            return self._run_swarm_agent_iteration(agent_module)
-        elif agent_name == 'websearch_agent':
-            return self._run_websearch_agent_iteration(agent_module)
-        elif agent_name == 'rbi_agent':
-            return self._run_rbi_agent_iteration(agent_module)
+        if agent_name in agent_iteration_methods:
+            return agent_iteration_methods[agent_name](agent_module)
         else:
             # For unknown agents, try to run main() in a separate process with timeout
-            import subprocess
-            import sys
-            try:
-                # Run the agent in a subprocess with timeout
-                result = subprocess.run([
-                    sys.executable, '-c',
-                    f'import sys; sys.path.insert(0, "src"); import agents.{agent_name} as agent; agent.main()'
-                ], timeout=10, capture_output=True, text=True)
-                return result.returncode == 0
-            except subprocess.TimeoutExpired:
-                cprint(f"⏰ {agent_name} timed out", "yellow")
-                return None
+            return self._run_unknown_agent_iteration(agent_name)
+
+    def _run_unknown_agent_iteration(self, agent_name: str):
+        """Run an unknown agent in a subprocess with security validation"""
+        import subprocess
+        import sys
+        import re
+
+        # Security: Validate agent_name to prevent code injection
+        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', agent_name):
+            cprint(f"❌ Invalid agent name: {agent_name}", "red")
+            return None
+
+        try:
+            # Run the agent in a subprocess with timeout
+            result = subprocess.run([
+                sys.executable, '-c',
+                f'import sys; sys.path.insert(0, "src"); import agents.{agent_name} as agent; agent.main()'
+            ], timeout=10, capture_output=True, text=True)
+            return result.returncode == 0
+        except subprocess.TimeoutExpired:
+            cprint(f"⏰ {agent_name} timed out", "yellow")
+            return None
 
     def _run_risk_agent_iteration(self, agent_module):
         """Run a single iteration of the risk agent"""

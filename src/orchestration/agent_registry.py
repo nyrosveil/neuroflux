@@ -158,6 +158,7 @@ class AgentRegistry:
                 await self.health_monitoring_task
             except asyncio.CancelledError:
                 pass
+            self.health_monitoring_task = None
         cprint("✅ Agent Registry & Discovery System stopped", "green")
 
     async def register_agent(self, agent_info: Dict[str, Any]) -> str:
@@ -365,8 +366,11 @@ class AgentRegistry:
                 # Calculate running average for some metrics
                 if key.startswith('avg_'):
                     old_value = stats[key]
-                    count = stats.get('requests_served', 1)
-                    stats[key] = (old_value * (count - 1) + value) / count
+                    count = max(stats.get('requests_served', 1), 1)  # Ensure count is at least 1
+                    if old_value == 0.0:  # First update
+                        stats[key] = value
+                    else:
+                        stats[key] = (old_value * (count - 1) + value) / count
                 else:
                     stats[key] = value
 

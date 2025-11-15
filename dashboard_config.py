@@ -45,9 +45,17 @@ class Config:
     DEBUG = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
     TESTING = os.getenv('FLASK_TESTING', 'false').lower() == 'true'
 
-    # Server Configuration
+    # Server Configuration - Multi-Port Architecture
     HOST = os.getenv('HOST', '127.0.0.1')
-    PORT = int(os.getenv('PORT', '5001'))
+
+    # Service Ports - More Reasonable Configuration
+    API_PORT = int(os.getenv('API_PORT', '8000'))          # Flask API Server (more unique)
+    WEBSOCKET_PORT = int(os.getenv('WEBSOCKET_PORT', '8001'))  # WebSocket (separate port)
+    DASHBOARD_PORT = int(os.getenv('DASHBOARD_PORT', '3000'))   # React Dashboard (standard)
+
+    # Legacy support - maps to API port for backward compatibility
+    PORT = API_PORT
+
     SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 
     # Flask Configuration

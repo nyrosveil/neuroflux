@@ -35,8 +35,8 @@ class NeuroFluxSystemTester:
     """Comprehensive system tester for NeuroFlux."""
 
     def __init__(self):
-        self.base_url = "http://localhost:5001"
-        self.ws_url = "ws://localhost:5001"
+        self.base_url = "http://localhost:8000"
+        self.ws_url = "ws://localhost:8000"
         self.test_results = {}
         self.start_time = None
         self.end_time = None
@@ -107,7 +107,7 @@ class NeuroFluxSystemTester:
         try:
             cprint("🚀 Starting dashboard server...", "blue")
             self.server_process = subprocess.Popen(
-                ['gunicorn', '-w', '2', '-b', '127.0.0.1:5001', 'dashboard_api:app'],
+                ['gunicorn', '-w', '2', '-b', '127.0.0.1:8000', 'dashboard_api:app'],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=os.getcwd()

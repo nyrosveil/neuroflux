@@ -108,6 +108,26 @@ SLEEP_BETWEEN_RUNS_MINUTES = 15  # How long to sleep between agent runs 🕒
 # Minimum trades last hour for token validation
 MIN_TRADES_LAST_HOUR = 2
 
+# Performance Monitoring 📊
+ENABLE_PERFORMANCE_MONITORING = True
+PERFORMANCE_LOG_INTERVAL = 300  # Log performance every 5 minutes
+MEMORY_WARNING_THRESHOLD = 80  # Warn when memory usage > 80%
+CPU_WARNING_THRESHOLD = 90     # Warn when CPU usage > 90%
+MAX_RESPONSE_TIME_WARNING = 5.0  # Warn when API response > 5 seconds
+
+# Security Settings 🔒
+ENABLE_RATE_LIMITING = True
+RATE_LIMIT_REQUESTS = 100  # Max requests per minute per IP
+RATE_LIMIT_WINDOW = 60     # Time window in seconds
+ENABLE_REQUEST_LOGGING = True
+LOG_SENSITIVE_DATA = False  # Never log API keys or secrets
+
+# Error Handling ⚠️
+MAX_RETRIES = 3
+RETRY_BACKOFF_FACTOR = 2.0
+CIRCUIT_BREAKER_THRESHOLD = 5  # Open circuit after 5 failures
+CIRCUIT_BREAKER_TIMEOUT = 60   # Reset circuit after 60 seconds
+
 # NeuroFlux Specific Settings 🧠
 # Flux monitoring thresholds
 FLUX_SENSITIVITY = 0.8  # Sensitivity for flux detection (0-1)

@@ -30,6 +30,7 @@ from datetime import datetime, timedelta
 import threading
 import numpy as np
 import pandas as pd
+from typing import Dict, List, Any, Optional
 
 class EventLoopManager:
     """Global event loop manager to prevent 'Event loop is closed' errors"""
@@ -42,8 +43,11 @@ class EventLoopManager:
         """Get or create the global event loop thread-safely"""
         with self._lock:
             if self._loop is None or self._loop.is_closed():
-                self._loop = event_loop_manager.get_loop()
-                asyncio.set_event_loop(self._loop)
+                try:
+                    self._loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    self._loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(self._loop)
             return self._loop
 
     async def run_async(self, coro):
@@ -122,10 +126,8 @@ except ImportError:
     print("⚠️  ML modules not available - running without ML features")
     ML_AVAILABLE = False
 
-# Configure Flask to serve React build files
-app = Flask(__name__,
-            static_folder='dashboard/build',
-            static_url_path='/')
+# Configure Flask API server (no static file serving)
+app = Flask(__name__)
 
 # Load configuration from config module
 app.config.update(
@@ -134,13 +136,43 @@ app.config.update(
     TESTING=config.TESTING,
     ENV=config.ENV,
     HOST=config.HOST,
-    PORT=config.PORT,
+    PORT=config.API_PORT,  # Use API port specifically
     SESSION_TIMEOUT=config.SESSION_TIMEOUT,
     MAX_CONTENT_LENGTH=config.MAX_CONTENT_LENGTH,
 )
 
 # CORS configuration
 CORS(app, origins=config.CORS_ORIGINS)
+
+# Security headers
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to all responses"""
+    # Security headers
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+    return response
+
+# Input validation helper
+def validate_input(data, required_fields=None, max_lengths=None):
+    """Validate input data for security"""
+    if not data:
+        return False, "No data provided"
+
+    if required_fields:
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return False, f"Missing required field: {field}"
+
+    if max_lengths:
+        for field, max_len in max_lengths.items():
+            if field in data and len(str(data[field])) > max_len:
+                return False, f"Field {field} exceeds maximum length of {max_len}"
+
+    return True, "Valid"
 socketio = SocketIO(app, cors_allowed_origins=config.CORS_ORIGINS, async_mode='threading')
 
 # Configure logging
@@ -188,6 +220,16 @@ orchestrator = None
 orchestrator_task = None
 ccxt_manager = None
 rt_agent_bus = None
+
+# Global storage for latest prediction data
+latest_prediction_data = None
+prediction_data_lock = threading.Lock()
+
+# Global storage for sentiment and volatility data
+latest_sentiment_data = None
+latest_volatility_data = None
+sentiment_data_lock = threading.Lock()
+volatility_data_lock = threading.Lock()
 
 # CCXT Manager will be initialized on-demand in API endpoints
 
@@ -331,13 +373,48 @@ def get_agents():
 
 @app.route('/api/health')
 def health_check():
-    """System health check"""
-    return jsonify({
+    """Comprehensive system health check"""
+    health_status = {
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
         'uptime': time.time() - start_time,
-        'ml_available': ML_AVAILABLE
-    })
+        'version': '3.2.0',
+        'components': {
+            'orchestrator': {
+                'available': ORCHESTRATOR_AVAILABLE,
+                'connected': orchestrator is not None,
+                'agents_count': len(orchestrator.agent_registry.agents) if orchestrator else 0
+            },
+            'ml_models': {
+                'available': ML_AVAILABLE,
+                'models': ['ARIMA', 'LSTM', 'Ensemble'] if ML_AVAILABLE else []
+            },
+            'exchanges': {
+                'available': CCXT_AVAILABLE,
+                'ccxt_manager': ccxt_manager is not None
+            },
+            'realtime_bus': {
+                'available': RT_BUS_AVAILABLE,
+                'active': rt_agent_bus is not None and getattr(rt_agent_bus, 'running', False)
+            }
+        },
+        'memory_usage': {
+            'rss': 'N/A',  # Would need psutil
+            'vms': 'N/A'
+        },
+        'active_connections': {
+            'websocket_clients': 'N/A'  # SocketIO client count tracking
+        }
+    }
+
+    # Determine overall status
+    critical_components = ['orchestrator', 'ml_models']
+    for component in critical_components:
+        if not health_status['components'][component]['available']:
+            health_status['status'] = 'degraded'
+            break
+
+    return jsonify(health_status)
 
 # React App Routes - Serve React frontend
 @app.route('/', defaults={'path': ''})
@@ -1025,7 +1102,17 @@ def get_market_analysis(symbol):
 @app.route('/api/dashboard/predictions')
 def get_prediction_dashboard():
     """Get prediction data for dashboard charts"""
-    # Generate mock prediction chart data
+    global latest_prediction_data
+
+    # Check if we have real prediction data
+    with prediction_data_lock:
+        if latest_prediction_data:
+            # Return real prediction data with current timestamp
+            data = latest_prediction_data.copy()
+            data['last_update'] = datetime.now().isoformat()
+            return jsonify(data)
+
+    # Generate mock prediction chart data as fallback
     timestamps = []
     prices = []
     predictions = []
@@ -1285,6 +1372,73 @@ def stream_market_data(symbol, last_data):
 
     return None
 
+def update_prediction_data(new_prediction_data):
+    """Update the global prediction data storage."""
+    global latest_prediction_data
+
+    with prediction_data_lock:
+        if latest_prediction_data is None:
+            latest_prediction_data = {}
+
+        # Update prediction data based on type
+        if 'price_predictions' in new_prediction_data:
+            latest_prediction_data['price_chart'] = format_price_chart_data(new_prediction_data['price_predictions'])
+
+        if 'volume_predictions' in new_prediction_data:
+            latest_prediction_data['volume_chart'] = format_volume_chart_data(new_prediction_data['volume_predictions'])
+
+        if 'sentiment_analysis' in new_prediction_data:
+            latest_prediction_data['sentiment_chart'] = format_sentiment_chart_data(new_prediction_data['sentiment_analysis'])
+
+        if 'model_performance' in new_prediction_data:
+            latest_prediction_data['model_performance'] = new_prediction_data['model_performance']
+
+        latest_prediction_data['last_update'] = datetime.now().isoformat()
+
+def update_sentiment_data(new_sentiment_data):
+    """Update the global sentiment data storage."""
+    global latest_sentiment_data
+
+    with sentiment_data_lock:
+        latest_sentiment_data = new_sentiment_data
+        latest_sentiment_data['last_update'] = datetime.now().isoformat()
+
+def update_volatility_data(new_volatility_data):
+    """Update the global volatility data storage."""
+    global latest_volatility_data
+
+    with volatility_data_lock:
+        latest_volatility_data = new_volatility_data
+        latest_volatility_data['last_update'] = datetime.now().isoformat()
+
+def format_price_chart_data(price_predictions):
+    """Format price prediction data for dashboard charts."""
+    # This would format the raw prediction data into the chart format
+    # For now, return a basic structure that the frontend expects
+    return {
+        'timestamps': [datetime.now().isoformat()],
+        'actual_prices': [price_predictions.get('current_price', 45000)],
+        'predictions': [price_predictions.get('predicted_price', 45000)],
+        'confidence_upper': [price_predictions.get('confidence_upper', 46000)],
+        'confidence_lower': [price_predictions.get('confidence_lower', 44000)]
+    }
+
+def format_volume_chart_data(volume_predictions: Dict[str, Any]) -> Dict[str, Any]:
+    """Format volume prediction data for dashboard charts."""
+    return {
+        'timestamps': [datetime.now().isoformat()],
+        'actual_volume': [volume_predictions.get('current_volume', 1000000)],
+        'predicted_volume': [volume_predictions.get('predicted_volume', 1000000)]
+    }
+
+def format_sentiment_chart_data(sentiment_analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """Format sentiment analysis data for dashboard charts."""
+    return {
+        'timestamps': [datetime.now().isoformat()],
+        'sentiment': [sentiment_analysis.get('score', 0.5)],
+        'predicted_sentiment': [sentiment_analysis.get('predicted_score', 0.5)]
+    }
+
 def has_significant_change(old_data, new_data):
     """Check if market data has changed significantly"""
     if not old_data or 'exchanges' not in old_data:
@@ -1380,6 +1534,51 @@ def handle_request_agent_details(data):
     else:
         emit('agent_details', [])
 
+@socketio.on('prediction_update')
+def handle_prediction_update(data):
+    """Handle real-time prediction updates from orchestrator."""
+    try:
+        prediction_data = data.get('data', {})
+        update_prediction_data(prediction_data)
+
+        # Broadcast to all connected clients
+        emit('prediction_update', data, broadcast=True, include_self=False)
+
+        print(f"📊 Processed prediction update: {prediction_data.get('task_name', 'unknown')}")
+
+    except Exception as e:
+        print(f"❌ Error handling prediction update: {e}")
+
+@socketio.on('sentiment_update')
+def handle_sentiment_update(data):
+    """Handle real-time sentiment analysis updates."""
+    try:
+        sentiment_data = data.get('data', {})
+        update_sentiment_data(sentiment_data)
+
+        # Broadcast to all connected clients
+        emit('sentiment_update', data, broadcast=True, include_self=False)
+
+        print(f"📊 Processed sentiment update: {sentiment_data.get('token', 'unknown')}")
+
+    except Exception as e:
+        print(f"❌ Error handling sentiment update: {e}")
+
+@socketio.on('volatility_update')
+def handle_volatility_update(data):
+    """Handle real-time volatility/risk analysis updates."""
+    try:
+        volatility_data = data.get('data', {})
+        update_volatility_data(volatility_data)
+
+        # Broadcast to all connected clients
+        emit('volatility_update', data, broadcast=True, include_self=False)
+
+        print(f"📊 Processed volatility update: {volatility_data.get('volatility_pct', 0):.2f}%")
+
+    except Exception as e:
+        print(f"❌ Error handling volatility update: {e}")
+
 @socketio.on('send_agent_command')
 def handle_send_agent_command(data):
     """Send a command to an agent through the orchestrator"""
@@ -1418,31 +1617,104 @@ def handle_send_agent_command(data):
             'error': 'Orchestrator not available'
         })
 
-async def start_orchestrator():
-    """Start the orchestrator in a separate task"""
-    await initialize_orchestrator()
+async def initialize_system():
+    """Initialize all system components asynchronously"""
+    print("🚀 Initializing NeuroFlux system components...")
+
+    # Initialize orchestrator
+    if ORCHESTRATOR_AVAILABLE:
+        try:
+            print("🤖 Initializing orchestrator...")
+            await initialize_orchestrator()
+            print("✅ Orchestrator initialized successfully")
+        except Exception as e:
+            print(f"❌ Failed to initialize orchestrator: {e}")
+            print("🔄 Continuing with mock mode...")
+
+    # Initialize real-time agent bus
+    global rt_agent_bus
+    if RT_BUS_AVAILABLE:
+        try:
+            print("🔄 Starting real-time agent bus...")
+            rt_agent_bus = RealTimeAgentBus(orchestrator=orchestrator)
+            success = await rt_agent_bus.start()
+            if success:
+                print("✅ Real-time agent bus started")
+            else:
+                print("❌ Real-time agent bus failed to start")
+                rt_agent_bus = None
+        except Exception as e:
+            print(f"❌ Failed to start real-time agent bus: {e}")
+            rt_agent_bus = None
+
+    print("✅ System initialization complete")
+
+def start_background_services():
+    """Start background services in separate threads"""
+    print("🔄 Starting background services...")
+
+    # Start real-time updates thread
+    try:
+        update_thread = threading.Thread(target=generate_real_time_updates, daemon=True, name="RealTimeUpdates")
+        update_thread.start()
+        print("✅ Real-time updates thread started")
+    except Exception as e:
+        print(f"❌ Failed to start real-time updates: {e}")
+
+    # Start agent message forwarding if orchestrator is available
+    if ORCHESTRATOR_AVAILABLE and orchestrator:
+        try:
+            forwarding_thread = threading.Thread(target=start_agent_message_forwarding_sync, daemon=True, name="AgentForwarding")
+            forwarding_thread.start()
+            print("✅ Agent message forwarding started")
+        except Exception as e:
+            print(f"❌ Failed to start agent message forwarding: {e}")
+
+def start_agent_message_forwarding_sync():
+    """Synchronous wrapper for agent message forwarding"""
+    try:
+        # Create new event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(setup_agent_message_forwarding())
+    except Exception as e:
+        print(f"❌ Agent message forwarding error: {e}")
 
 if __name__ == '__main__':
     start_time = time.time()
 
-    # Initialize orchestrator if available
-    if ORCHESTRATOR_AVAILABLE:
-        try:
-            asyncio.run(start_orchestrator())
-        except Exception as e:
-            print(f"Failed to start orchestrator: {e}")
+    try:
+        # Initialize system components
+        asyncio.run(initialize_system())
 
-    # Start background update thread
-    update_thread = threading.Thread(target=generate_real_time_updates, daemon=True)
-    update_thread.start()
+        # Start background services
+        start_background_services()
 
-    print("🧠 Starting NeuroFlux Dashboard API Server...")
-    print("📊 Dashboard: http://localhost:3000")
-    print("🔌 API: http://localhost:5001")
-    print("🌐 WebSocket: ws://localhost:5001")
-    print(f"🤖 Orchestrator: {'✅ Connected' if orchestrator else '❌ Mock mode'}")
-    print(f"🧠 ML Models: {'✅ Available' if ML_AVAILABLE else '❌ Unavailable'}")
-    print(f"📈 CCXT Exchanges: {'✅ Available' if CCXT_AVAILABLE else '❌ Unavailable'}")
-    print(f"🔄 Real-Time Bus: {'✅ Active' if rt_agent_bus else '❌ Unavailable'}")
+        # Print status
+        print("\n" + "="*60)
+        print("🧠 NeuroFlux API Server Status")
+        print("="*60)
+        print(f"🤖 Orchestrator: {'✅ Connected' if orchestrator else '❌ Mock mode'}")
+        print(f"🧠 ML Models: {'✅ Available' if ML_AVAILABLE else '❌ Unavailable'}")
+        print(f"📈 CCXT Exchanges: {'✅ Available' if CCXT_AVAILABLE else '❌ Unavailable'}")
+        print(f"🔄 Real-Time Bus: {'✅ Active' if rt_agent_bus else '❌ Unavailable'}")
+        print(f"⏱️  Initialization time: {time.time() - start_time:.2f}s")
+        print("="*60)
 
-    socketio.run(app, host='0.0.0.0', port=5001, debug=False, allow_unsafe_werkzeug=True)
+        print("\n🌐 Starting server...")
+        print(f"🔌 API: http://localhost:{config.API_PORT}")
+        print("🌐 WebSocket: ws://localhost:{config.API_PORT}")
+        print("📊 Dashboard: http://localhost:3000 (separate React dev server)")
+
+        # Start the server
+        socketio.run(app, host='0.0.0.0', port=config.API_PORT, debug=False, allow_unsafe_werkzeug=True)
+
+    except KeyboardInterrupt:
+        print("\n🛑 Server shutdown requested by user")
+    except Exception as e:
+        print(f"\n❌ Fatal error during server startup: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        print("🧹 Cleaning up resources...")
+        # Cleanup code here if needed

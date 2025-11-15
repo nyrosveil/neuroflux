@@ -39,7 +39,7 @@ class MLPredictionAgent:
         self.capabilities = ['ML_PREDICTION', 'TIME_SERIES_ANALYSIS']
 
         # ML API configuration
-        self.ml_api_base = "http://localhost:5001/api/ml"  # Dashboard API endpoint
+        self.ml_api_base = "http://localhost:8000/api/ml"  # Dashboard API endpoint
         self.prediction_timeout = 30  # seconds
 
         # Model configurations
@@ -116,6 +116,37 @@ class MLPredictionAgent:
             cprint(f"❌ ML prediction task {task_id} failed: {e}", "red")
             await self._send_task_result(task_id, {'error': str(e)}, status='failed')
 
+    def _get_historical_data(self, token: str) -> List[Dict[str, Any]]:
+        """Get historical price data for ML model training/prediction."""
+        # In a real implementation, this would fetch from a database or API
+        # For now, generate synthetic historical data
+        import random
+        from datetime import datetime, timedelta
+
+        data_points = []
+        base_price = 45000 if token == 'BTC' else 3000 if token == 'ETH' else 150
+        current_time = datetime.now()
+
+        for i in range(100):  # 100 data points for training
+            timestamp = current_time - timedelta(hours=100-i)
+            price_change = random.uniform(-0.05, 0.05)  # ±5% daily change
+            price = base_price * (1 + price_change * i * 0.01)  # Slight trend
+
+            # Add some noise
+            noise = random.uniform(-0.02, 0.02)
+            final_price = price * (1 + noise)
+
+            data_points.append({
+                'timestamp': timestamp.isoformat(),
+                'open': final_price * random.uniform(0.98, 1.02),
+                'high': final_price * random.uniform(1.00, 1.05),
+                'low': final_price * random.uniform(0.95, 1.00),
+                'close': final_price,
+                'volume': random.uniform(1000000, 10000000)
+            })
+
+        return data_points
+
     async def _predict_prices(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Generate price predictions using ML models."""
         tokens = payload.get('tokens', ['BTC'])
@@ -135,11 +166,14 @@ class MLPredictionAgent:
                 try:
                     # Call ML API for prediction
                     prediction_result = await self._call_ml_api(
-                        endpoint=f"/predict/{model}",
+                        endpoint=f"/api/ml/predict/{model.lower()}",
                         payload={
-                            'token': token,
-                            'horizon': prediction_horizon,
-                            'include_confidence': True
+                            'data': self._get_historical_data(token),  # Historical price data
+                            'target_column': 'close',
+                            'config': {
+                                'prediction_horizon': prediction_horizon,
+                                'confidence_threshold': confidence_threshold
+                            }
                         }
                     )
 
@@ -163,11 +197,8 @@ class MLPredictionAgent:
         return {
             'prediction_type': 'price',
             'predictions': predictions,
-            'metadata': {
-                'models_used': models,
-                'confidence_threshold': confidence_threshold,
-                'prediction_horizon_minutes': prediction_horizon
-            }
+            'model_performance': self.prediction_stats['model_performance'],
+            'timestamp': datetime.now().isoformat()
         }
 
     async def _predict_volumes(self, payload: Dict[str, Any]) -> Dict[str, Any]:

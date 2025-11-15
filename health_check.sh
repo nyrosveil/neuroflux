@@ -3,7 +3,7 @@
 # This script performs comprehensive health checks on the NeuroFlux system
 
 # Configuration
-API_URL="http://localhost:5001"
+API_URL="http://localhost:8000"
 SERVICE_NAME="neuroflux"
 LOG_FILE="/var/log/neuroflux/health_check.log"
 

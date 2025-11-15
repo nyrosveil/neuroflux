@@ -111,7 +111,7 @@ SECRET_KEY=your-generated-secret-key
 
 # Server Configuration
 HOST=127.0.0.1
-PORT=5001
+PORT=8000
 WORKERS=4
 
 # API Keys (configure these for your exchanges)
@@ -233,7 +233,7 @@ sudo systemctl status neuroflux
 sudo journalctl -u neuroflux --no-pager -n 50
 
 # Check if port is available
-sudo netstat -tlnp | grep :5001
+sudo netstat -tlnp | grep :8000
 ```
 
 #### API Returns 500 Error
