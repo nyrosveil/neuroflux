@@ -283,6 +283,9 @@ function App() {
     );
   }
 
+  // Debug: Show data in console
+  console.log('App render - isLoading:', isLoading, 'systemData:', systemData, 'agentData:', agentData);
+
   return (
     <ErrorProvider>
       <ErrorBoundary>
