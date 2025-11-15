@@ -13,7 +13,7 @@ import OnboardingTour, { useOnboarding } from './components/OnboardingTour';
 import { ErrorProvider, ErrorBoundary } from './contexts/ErrorContext';
 import { useTouchGestures, usePullToRefresh } from './hooks/useTouchGestures';
 import { registerServiceWorker, requestNotificationPermission, setupInstallPrompt, isPWA } from './utils/pwaUtils';
-import { io } from 'socket.io-client';
+// import { io } from 'socket.io-client'; // Disabled
 
 function App() {
   const [systemData, setSystemData] = useState({
@@ -26,7 +26,7 @@ function App() {
   });
   const [agentData, setAgentData] = useState([]);
   const [predictionData, setPredictionData] = useState(null);
-  const [notifications, setNotifications] = useState([]);
+  // const [notifications, setNotifications] = useState([]); // Disabled
   const [socket, setSocket] = useState(null);
   const [currentView, setCurrentView] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -88,6 +88,7 @@ function App() {
       setIsLoading(false);
     };
     loadData();
+  }, [fetchSystemData, fetchAgentData, fetchPredictionData]);
 
     // Initialize PWA features
     if (!isPWA()) {
@@ -116,7 +117,7 @@ function App() {
     };
   }, []);
 
-  const fetchSystemData = async () => {
+  const fetchSystemData = useCallback(async () => {
     try {
       console.log('Fetching system data...');
       const response = await fetch('/api/status');
@@ -127,9 +128,9 @@ function App() {
     } catch (error) {
       console.error('Failed to fetch system data:', error);
     }
-  };
+  }, []);
 
-  const fetchAgentData = async () => {
+  const fetchAgentData = useCallback(async () => {
     try {
       console.log('Fetching agent data...');
       const response = await fetch('/api/agents');
@@ -140,9 +141,9 @@ function App() {
     } catch (error) {
       console.error('Failed to fetch agent data:', error);
     }
-  };
+  }, []);
 
-  const fetchPredictionData = async () => {
+  const fetchPredictionData = useCallback(async () => {
     try {
       console.log('Fetching prediction data...');
       const response = await fetch('/api/dashboard/predictions');
@@ -155,7 +156,7 @@ function App() {
       // Use mock data for development
       setPredictionData(getMockPredictionData());
     }
-  };
+  }, []);
 
   // Pull to refresh handler
   const handlePullToRefresh = async () => {
